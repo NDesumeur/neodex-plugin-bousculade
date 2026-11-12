@@ -417,7 +417,7 @@ function buThink(s, level, rnd = Math.random) {
   if (level === 0 && scored[0][0] < 5e4 && rnd() < .3) return scored[Math.floor(rnd() * Math.min(4, scored.length))][1];  // en facile, il lui arrive de jouer moins bien
   return scored[0][1];
 }
-/* le dessin : les animaux vus de dessus (regard vers le haut, tournés au besoin), dessinés à partir de formes puis cernés de noir */
+/* le dessin : les animaux vus de dessus (regard vers le haut, tournés au besoin), modelés en volume (lumière en haut à gauche) puis cernés de noir */
 function buShape(fill, N = 28) {  // fill(x, y) -> une couleur ou rien, sur N × N ; le contour noir est ajouté autour
   return cnv(N, N, b => {
     const cell = (x, y) => x >= 0 && y >= 0 && x < N && y < N ? fill(x, y) : null;
@@ -425,52 +425,131 @@ function buShape(fill, N = 28) {  // fill(x, y) -> une couleur ou rien, sur N ×
   });
 }
 const buIn = (x, y, cx, cy, rx, ry) => ((x + .5 - cx) / rx) ** 2 + ((y + .5 - cy) / ry) ** 2 <= 1;
-const buCloth = (x, y, x0, y0, x1, y1, c1, c2) => x >= x0 && x <= x1 && y >= y0 && y <= y1 && !((x === x0 || x === x1) && (y === y0 || y === y1)) ? (x === x0 || x === x1 || y === y0 || y === y1 ? '#e8b84a' : (x + y) % 4 === 0 ? c2 : c1) : null;  // une couverture à liseré d'or, coins arrondis
+// le modelé : la normale d'une demi-sphère aplatie, éclairée d'en haut à gauche, rangée en 4 tons (du plus sombre au plus clair)
+function buShade(x, y, cx, cy, rx, ry, tones, bias = 0) {
+  const nx = (x + .5 - cx) / rx, ny = (y + .5 - cy) / ry, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny)), l = -.5 * nx - .62 * ny + .6 * nz + bias;
+  return tones[l > .95 ? 3 : l > .6 ? 2 : l > .22 ? 1 : 0];
+}
+const BU_GREY = ['#56566c', '#76768e', '#9898b0', '#c0c0d4'], BU_EAR = ['#7a5a6a', '#a8788a', '#cc9aaa', '#cc9aaa'], BU_IVORY = ['#b8a888', '#e8dcc0', '#fffaf0'];
+const BU_BROWN = ['#54402e', '#765c44', '#98785a', '#bc9c78'];
+const BU_TEAMC = {E: ['#2a52a8', '#4a7ad8', '#9ac0ff'], R: ['#a82a22', '#d8463a', '#ffb0a0']};
+// la couverture : ourlet d'or, losange aux couleurs de l'équipe, cœur doré
+function buBlanket(x, y, x0, y0, x1, y1, c) {
+  if (x < x0 || x > x1 || y < y0 || y > y1) return null;
+  if ((x === x0 || x === x1) && (y === y0 || y === y1)) return null;
+  if (x === x0 || x === x1 || y === y0 || y === y1) return (x + y) % 2 ? '#e8b84a' : '#b8862a';
+  const dia = Math.abs(x - (x0 + x1) / 2) + Math.abs(y - (y0 + y1) / 2);
+  if (dia < 1.1) return '#ffe89a'; if (Math.abs(dia - 3) < .6) return c[2];
+  return x - x0 < 2 || y - y0 < 2 ? c[1] : c[0];
+}
 const BU_SPR = {
-  E: buShape((x, y) => {  // l'éléphant vu de dessus, trompe vers le haut : grandes oreilles, défenses, couverture bleue
-    if (x >= 13 && x <= 14 && y >= 1 && y <= 7) return y % 2 ? '#a8a8b8' : '#8a8a9a';  // la trompe annelée
-    if ((x === 10 || x === 17) && y >= 4 && y <= 7) return y === 4 ? '#ffffff' : '#f0e8d0';  // les défenses
-    if (buIn(x, y, 14, 10, 5.5, 4.5)) return buIn(x, y, 12, 9, 2.5, 2) ? '#c8c8d8' : '#a8a8b8';  // la tête
-    if (buIn(x, y, 5.5, 12, 5, 6.5) || buIn(x, y, 22.5, 12, 5, 6.5)) return buIn(x, y, x < 14 ? 6.5 : 21.5, 12, 3, 4.5) ? '#c8a0a8' : '#7a7a8a';  // les oreilles
-    if (buIn(x, y, 14, 19, 8, 7.5)) return buCloth(x, y, 10, 15, 17, 22, '#3a6ac8', '#6a9ae8') || (x < 11 ? '#a8a8b8' : '#8a8a9a');
-    if (x >= 13 && x <= 14 && y >= 26) return '#6a6a7a';  // la queue
+  E: buShape((x, y) => {  // l'éléphant : trompe annelée qui s'enroule, défenses, grandes oreilles roses dedans, couverture bleue
+    if (y <= 1 && x >= 12 && x <= 15) return y === 0 ? (x === 12 || x === 15 ? null : BU_GREY[1]) : BU_GREY[x === 12 ? 1 : 2];  // le bout de la trompe, recourbé
+    if (x >= 13 && x <= 14 && y >= 2 && y <= 6) return y % 2 ? BU_GREY[x === 13 ? 2 : 1] : BU_GREY[x === 13 ? 1 : 0];
+    if ((x === 10 || x === 17) && y >= 4 && y <= 7) return BU_IVORY[y === 4 ? 2 : x === 10 ? 1 : 0];  // les défenses
+    if ((x === 10 || x === 17) && y === 9) return '#14100c';  // les yeux
+    if (buIn(x, y, 14, 10, 5.5, 4.6)) return buShade(x, y, 14, 10, 5.5, 4.6, BU_GREY, .1);  // la tête
+    if (buIn(x, y, 5.6, 13, 5, 6.8) || buIn(x, y, 22.4, 13, 5, 6.8)) { const cx = x < 14 ? 5.6 : 22.4;  // les oreilles, le dedans rose
+      if (buIn(x, y, cx + (x < 14 ? .8 : -.8), 13.4, 3.1, 4.8)) return buShade(x, y, cx, 13, 5, 6.8, BU_EAR);
+      return buShade(x, y, cx, 13, 5, 6.8, BU_GREY, -.15); }
+    const bl = buBlanket(x, y, 9, 14, 18, 23, BU_TEAMC.E); if (bl && buIn(x, y, 14, 19, 8.6, 7.8)) return bl;
+    if (buIn(x, y, 14, 19, 8.6, 7.8)) return buShade(x, y, 14, 19, 8.6, 7.8, BU_GREY);  // le dos
+    if (buIn(x, y, 6.5, 24, 2.2, 1.8) || buIn(x, y, 21.5, 24, 2.2, 1.8)) return x < 14 ? BU_GREY[1] : BU_GREY[0];  // les pattes arrière
+    if (x >= 13 && x <= 14 && y >= 26) return y === 27 ? '#3a3a48' : BU_GREY[0];  // la queue
   }),
-  R: buShape((x, y) => {  // le rhinocéros vu de dessus, cornes vers le haut : petites oreilles pointues, couverture rouge
-    if (x >= 13 && x <= 14 && y >= 0 && y <= 4) return y < 2 ? '#fffaf0' : '#e8dcc0';  // la grande corne
-    if (x >= 13 && x <= 14 && y >= 6 && y <= 7) return '#e8dcc0';  // la petite corne
-    if ((x === 9 || x === 18) && y >= 6 && y <= 8) return '#6a5444';  // les oreilles
-    if (buIn(x, y, 14, 9.5, 4.5, 5.5)) return buIn(x, y, 12.5, 9, 2, 2.5) ? '#b8a088' : '#9a8470';  // la tête
-    if (buIn(x, y, 14, 18.5, 8.5, 8)) return buCloth(x, y, 10, 14, 17, 22, '#c83a2a', '#e86a5a') || (x < 11 ? '#a89078' : '#8a7460');
-    if ((x === 6 || x === 21) && (y === 13 || y === 23)) return '#6a5444';  // les pattes qui dépassent
-    if (x >= 13 && x <= 14 && y >= 26) return '#5a4a3a';
+  R: buShape((x, y) => {  // le rhinocéros : grande corne et petite corne, oreilles pointues, plis de la cuirasse, couverture rouge
+    if (y <= 4 && x >= 12 && x <= 15) { const w = y <= 1 ? [13, 14] : y <= 3 ? [12.6, 14.4] : [12, 15]; return x >= w[0] && x <= w[1] ? BU_IVORY[x <= 13 ? (y < 2 ? 2 : 1) : 0] : null; }  // la grande corne
+    if (x >= 13 && x <= 14 && y >= 6 && y <= 7) return BU_IVORY[x === 13 ? 1 : 0];  // la petite corne
+    if ((x === 9 || x === 18) && y >= 5 && y <= 8) return y === 5 ? BU_BROWN[3] : y === 6 ? BU_BROWN[1] : '#3a2a1e';  // les oreilles pointues
+    if ((x === 10 || x === 17) && y === 10) return '#14100c';  // les yeux
+    if (buIn(x, y, 14, 9, 4.6, 5.4)) return buShade(x, y, 14, 9, 4.6, 5.4, BU_BROWN, .3);  // la tête, plus claire que le corps
+    if (y === 13 && buIn(x, y, 14, 18.5, 9, 8)) return x < 10 || x > 17 ? BU_BROWN[0] : '#3a2a1e';  // le cou, dans l'ombre de la tête
+    const bl = buBlanket(x, y, 9, 15, 18, 23, BU_TEAMC.R); if (bl && buIn(x, y, 14, 18.5, 9, 8)) return bl;
+    if (buIn(x, y, 14, 18.5, 9, 8)) { const t = buShade(x, y, 14, 18.5, 9, 8, BU_BROWN, -.1); return (x === 8 || x === 19 || y === 25) && y > 14 ? BU_BROWN[Math.max(0, BU_BROWN.indexOf(t) - 1)] : t; }  // la cuirasse et ses plis
+    if (buIn(x, y, 6.2, 12.5, 1.8, 2) || buIn(x, y, 21.8, 12.5, 1.8, 2) || buIn(x, y, 6.2, 24, 1.8, 2) || buIn(x, y, 21.8, 24, 1.8, 2)) return x < 14 ? BU_BROWN[1] : BU_BROWN[0];  // les pattes
+    if (x >= 13 && x <= 14 && y >= 26) return y === 27 ? '#2a1e14' : BU_BROWN[0];
   }),
-  O: buShape((x, y) => {  // un rocher : bosses, reflets, un peu de mousse
-    if (!(buIn(x, y, 14, 15, 11, 9.5) || buIn(x, y, 10, 10, 7, 6) || buIn(x, y, 18, 11, 6, 6))) return;
-    if ((x * 7 + y * 3) % 23 === 0 && y > 17) return '#5a7a3a';
-    return buIn(x, y, 10, 10, 3.5, 2.5) ? '#c8c0b0' : x + y < 23 ? '#9a9288' : (x * 3 + y) % 7 === 0 ? '#5a5248' : '#7a7268';
+  O: buShape((x, y) => {  // le rocher : trois bosses modelées, une fissure, de la mousse sur le dessus
+    const R = [['#4a4640', '#6a645a', '#8e877a', '#b8b0a0'], ['#45413b', '#625c52', '#857e72', '#aaa294']];
+    if ((x === 15 && y >= 12 && y <= 15) || (x === 16 && y >= 15 && y <= 18) || (y === 18 && x >= 17 && x <= 18)) return buIn(x, y, 14, 15, 11, 9.5) ? '#35312c' : null;  // la fissure
+    if (buIn(x, y, 10, 10, 7, 6)) return buIn(x, y, 8.5, 6.5, 4.5, 2.4) && (x + y) % 3 ? ((x * 5 + y) % 4 ? '#5a8a3a' : '#7aaa4a') : buShade(x, y, 10, 10, 7, 6, R[0], .05);
+    if (buIn(x, y, 18.5, 11, 6, 6)) return buShade(x, y, 18.5, 11, 6, 6, R[1]);
+    if (buIn(x, y, 14, 16, 11, 9)) return buShade(x, y, 14, 16, 11, 9, R[0], -.05);
   }),
 };
-const BU_BG = cnv(BU.W, BU.H, b => {  // la jungle tramée, le cadre de pierre, les dalles du plateau
-  const r = seeded(5);
-  px(b, '#10200e', 0, 0, BU.W, BU.H);
-  for (let i = 0; i < 900; i++) { const x = Math.floor(r() * BU.W), y = Math.floor(r() * BU.H); px(b, ['#1a3216', '#22401c', '#14280f'][i % 3], x, y, 2 + (i % 2), 1 + (i % 3 === 0)); }
-  const {X0, Y0, TS} = BU, S = TS * 5;
-  px(b, '#14100c', X0 - 8, Y0 - 8, S + 16, S + 16); px(b, '#6a6458', X0 - 7, Y0 - 7, S + 14, S + 14); px(b, '#8a8478', X0 - 7, Y0 - 7, S + 14, 2); px(b, '#4a4438', X0 - 7, Y0 + S + 5, S + 14, 2);
-  for (let k = 0; k < S + 14; k += 12) { px(b, '#5a5448', X0 - 7 + k, Y0 - 5, 1, 4); px(b, '#5a5448', X0 - 7 + k, Y0 + S + 1, 1, 4); px(b, '#5a5448', X0 - 5, Y0 - 7 + k, 4, 1); px(b, '#5a5448', X0 + S + 1, Y0 - 7 + k, 4, 1); }
+// l'ombre de chaque pièce : sa silhouette en noir transparent, posée un peu en bas à droite
+const BU_SH = Object.fromEntries(Object.entries(BU_SPR).map(([k, c]) => [k, cnv(28, 28, b => { b.drawImage(c, 0, 0); b.globalCompositeOperation = 'source-in'; b.fillStyle = 'rgba(10,6,2,.38)'; b.fillRect(0, 0, 28, 28); })]));
+const BU_BG = cnv(BU.W, BU.H, b => {  // la jungle (feuilles en couches, fleurs), le cadre de pierres taillées, les dalles de terre battue
+  const r = seeded(5), {X0, Y0, TS} = BU, S = TS * 5, near = (x, y, m) => x > X0 - m && x < X0 + S + m && y > Y0 - m && y < Y0 + S + m;
+  px(b, '#0c1a0c', 0, 0, BU.W, BU.H);
+  const leaf = (cx, cy, len, ang, tones) => {  // une feuille pointue, nervure au milieu
+    const ca = Math.cos(ang), sa = Math.sin(ang), wd = len * .34;
+    for (let y = -len; y <= len; y++) for (let x = -len; x <= len; x++) {
+      const u = x * ca + y * sa, v = -x * sa + y * ca, t = u / len; if (t < -1 || t > 1) continue;
+      if (Math.abs(v) > wd * Math.sqrt(1 - t * t) * (1 - .35 * t)) continue;
+      px(b, Math.abs(v) < .6 && t > -.9 ? tones[3] : v < 0 ? tones[2] : tones[t > .2 ? 1 : 0], cx + x, cy + y);
+    }
+  };
+  const greens = [['#0f2a10', '#163a16', '#1e4a1c', '#2a5a22'], ['#163a14', '#22501e', '#2e6426', '#3e7a30'], ['#1e4a18', '#2e6a24', '#3e8030', '#5a9a3e']];
+  for (const [n, z] of [[110, 0], [80, 1], [55, 2]]) for (let i = 0; i < n; i++) {
+    const x = r() * BU.W, y = r() * BU.H, len = 5 + Math.floor(r() * (5 + z * 2)), ang = r() * Math.PI * 2; if (z === 2 && near(x, y, 12)) continue;
+    leaf(Math.round(x), Math.round(y), len, ang, greens[z]);
+  }
+  for (let i = 0; i < 46; i++) { const x = Math.floor(r() * BU.W), y = Math.floor(r() * BU.H), c = ['#ff7ab0', '#ffd84a', '#ffffff', '#ff9a4a'][i % 4]; if (near(x, y, 12)) continue;
+    px(b, c, x, y - 1); px(b, c, x - 1, y); px(b, c, x + 1, y); px(b, c, x, y + 1); px(b, '#ffe89a', x, y); }
+  // l'ombre portée du plateau sur la jungle
+  b.fillStyle = 'rgba(0,0,0,.4)'; b.fillRect(X0 - 7, Y0 + S + 10, S + 18, 4); b.fillRect(X0 + S + 10, Y0 - 7, 4, S + 21);
+  // le cadre : des blocs de pierre décalés, arête claire en haut à gauche, sombre en bas à droite
+  px(b, '#14100c', X0 - 10, Y0 - 10, S + 20, S + 20);
+  const block = (x, y, w, h, k) => { px(b, ['#7a7464', '#6e6858', '#86806e'][k % 3], x, y, w, h); px(b, '#a49c88', x, y, w, 1); px(b, '#a49c88', x, y, 1, h); px(b, '#4a4538', x, y + h - 1, w, 1); px(b, '#4a4538', x + w - 1, y, 1, h);
+    if (k % 4 === 1) px(b, '#5a5446', x + 2 + (k % 3), y + 3, 1, 1); if (k % 5 === 2) px(b, '#5a8a3a', x + 1, y + h - 2, 2, 1); };
+  let k = 0;
+  for (let x = X0 - 9; x < X0 + S + 9; x += 12) { const w = Math.min(12, X0 + S + 9 - x); block(x, Y0 - 9, w, 8, k++); block(x, Y0 + S + 1, w, 8, k++); }
+  for (let y = Y0 - 1; y < Y0 + S + 1; y += 12) { const h = Math.min(12, Y0 + S + 1 - y); block(X0 - 9, y, 8, h, k++); block(X0 + S + 1, y, 8, h, k++); }
+  for (const [cx, cy] of [[X0 - 10, Y0 - 10], [X0 + S, Y0 - 10], [X0 - 10, Y0 + S], [X0 + S, Y0 + S]]) {  // les piliers des coins, avec une gemme
+    px(b, '#14100c', cx - 1, cy - 1, 12, 12); px(b, '#8e8876', cx, cy, 10, 10); px(b, '#b4ac98', cx, cy, 10, 1); px(b, '#b4ac98', cx, cy, 1, 10); px(b, '#4a4538', cx, cy + 9, 10, 1); px(b, '#4a4538', cx + 9, cy, 1, 10);
+    px(b, '#14100c', cx + 3, cy + 3, 4, 4); px(b, '#3ad0a0', cx + 4, cy + 4, 2, 2); px(b, '#b8ffe8', cx + 4, cy + 4, 1, 1); }
+  // les dalles : terre battue en damier doux, biseau, cailloux, fissures, touffes d'herbe sur le pourtour
   for (let rr = 0; rr < 5; rr++) for (let c = 0; c < 5; c++) {
-    const x = X0 + c * TS, y = Y0 + rr * TS, base = (rr + c) % 2 ? '#c8a878' : '#d8b888';
-    px(b, base, x, y, TS, TS); px(b, '#a88858', x, y + TS - 1, TS, 1); px(b, '#a88858', x + TS - 1, y, 1, TS); px(b, '#e8cca0', x, y, TS - 1, 1);
-    for (let k = 0; k < 5; k++) px(b, '#b89868', x + 2 + Math.floor(r() * 27), y + 2 + Math.floor(r() * 27), 2, 1);
+    const x = X0 + c * TS, y = Y0 + rr * TS, t = (rr + c) % 2 ? ['#c49c6a', '#d4ac7a', '#a8804e', '#e4c494'] : ['#cca472', '#dcb684', '#b08856', '#ecca9c'];
+    px(b, t[0], x, y, TS, TS);
+    for (let i = 0; i < 70; i++) px(b, r() < .5 ? t[1] : t[2], x + 1 + Math.floor(r() * 30), y + 1 + Math.floor(r() * 30));
+    px(b, t[3], x, y, TS - 1, 1); px(b, t[3], x, y, 1, TS - 1); px(b, '#8a6a40', x, y + TS - 1, TS, 1); px(b, '#8a6a40', x + TS - 1, y, 1, TS);
+    for (let i = 0; i < 2; i++) { const sx = x + 4 + Math.floor(r() * 23), sy = y + 4 + Math.floor(r() * 23); px(b, '#8a7a68', sx, sy, 2, 1); px(b, '#c8bca8', sx, sy, 1, 1); px(b, '#6a5a48', sx, sy + 1, 2, 1); }
+    if (r() < .35) { const cx = x + 3 + Math.floor(r() * 25), cy = y + 3 + Math.floor(r() * 24); px(b, '#9a7848', cx, cy, 1, 3); px(b, '#9a7848', cx + 1, cy + 2, 2, 1); }  // une fissure
+    if (rr === 0 || rr === 4 || c === 0 || c === 4) for (let i = 0; i < 3; i++) { const tx = x + 2 + Math.floor(r() * 27), ty = y + 2 + Math.floor(r() * 27); if (r() < .6) { px(b, '#4a8a34', tx, ty, 1, 2); px(b, '#6aaa44', tx + 1, ty - 1, 1, 3); px(b, '#4a8a34', tx + 2, ty, 1, 2); } }
   }
 });
+const BU_PANEL = cnv(48, 176, b => {  // les réserves : un panneau de planches clouées
+  const r = seeded(9); px(b, '#3a2414', 0, 0, 48, 176);
+  for (let x = 0; x < 48; x += 12) { px(b, ['#6a4426', '#5e3c22', '#744c2a', '#664024'][x / 12], x + 1, 1, 10, 174); px(b, '#8a5e36', x + 1, 1, 1, 174); px(b, '#3a2414', x + 11, 0, 1, 176);
+    for (let i = 0; i < 16; i++) px(b, '#4e321c', x + 3 + Math.floor(r() * 6), Math.floor(r() * 170) + 2, 1, 4 + Math.floor(r() * 5));
+    for (const y of [5, 168]) { px(b, '#2a1a0e', x + 5, y, 2, 2); px(b, '#b8a888', x + 5, y, 1, 1); } }
+  px(b, '#2a1a0e', 0, 0, 48, 1); px(b, '#2a1a0e', 0, 175, 48, 1);
+});
 const buCell = i => [BU.X0 + (i % 5) * BU.TS, BU.Y0 + Math.floor(i / 5) * BU.TS];
-function buPiece(g, p, x, y, alpha = 1) {  // une pièce centrée dans sa case de 32, tournée vers p.d (quarts de tour : les pixels restent nets)
-  g.globalAlpha = alpha; g.save(); g.translate(x + 16, y + 16); if (p.t !== 'O') g.rotate(p.d * Math.PI / 2); g.drawImage(BU_SPR[p.t], -14, -14); g.restore(); g.globalAlpha = 1;
+function buPiece(g, p, x, y, alpha = 1, a = null) {  // une pièce centrée dans sa case de 32 avec son ombre, tournée vers p.d (ou l'angle a, en quarts de tour, pendant une animation)
+  const rot = p.t === 'O' ? 0 : (a ?? p.d) * Math.PI / 2;
+  g.globalAlpha = alpha; g.save(); g.translate(Math.round(x) + 18, Math.round(y) + 19); g.rotate(rot); g.drawImage(BU_SH[p.t], -14, -14); g.restore();
+  g.save(); g.translate(Math.round(x) + 16, Math.round(y) + 16); g.rotate(rot); g.drawImage(BU_SPR[p.t], -14, -14); g.restore(); g.globalAlpha = 1;
 }
 function buArrow(g, x, y, d, col, s = 3) {  // une petite flèche pixel (pointe et tige), vers d, centrée en x, y
   const rot = ([a, b]) => [[a, b], [-b, a], [-a, -b], [b, -a]][d];
   for (let k = 0; k <= s; k++) for (let w = -k; w <= k; w++) { const [a, b] = rot([w, -s + k]); px(g, col, x + a, y + b, 1, 1); }
   for (let k = 1; k <= s; k++) { const [a, b] = rot([0, k]); px(g, col, x + a, y + b, 1, 1); }
+}
+// les glissements de la dernière action, pour l'animer : {to : la case d'arrivée, dx, dy : d'où elle vient, a0 : l'ancien regard, fade : elle apparaît}
+function buAnim(s, m) {
+  const out = [], D = BU_D[m.d ?? 0], col = i => i % 5, row = i => Math.floor(i / 5);
+  if (m.k === 'move') out.push({to: m.to, dx: (col(m.from) - col(m.to)) * 32, dy: (row(m.from) - row(m.to)) * 32, a0: s.b[m.from].d});
+  else if (m.k === 'rot') out.push({to: m.from, dx: 0, dy: 0, a0: s.b[m.from].d});
+  else if (m.k === 'enter') out.push({to: m.to, dx: -D[1] * 36, dy: -D[0] * 36, fade: 1});
+  else if (m.k === 'push' || m.k === 'pushin') {
+    const start = m.k === 'push' ? buStep(m.from, m.d) : m.to;
+    for (const j of buForce(s, start, m.d).line) { const nx = buStep(j, m.d); if (nx >= 0) out.push({to: nx, dx: -D[1] * 32, dy: -D[0] * 32}); }
+    out.push({to: start, dx: -D[1] * 32, dy: -D[0] * 32, fade: m.k === 'pushin' ? 1 : 0});
+  }
+  return out;
 }
 /* l'état de l'écran : menu (choix du mode), partie, fin ; les zones cliquables de chaque image servent aussi au clavier */
 function buNew(vs = bus.vs ?? 'ia') {
@@ -478,7 +557,7 @@ function buNew(vs = bus.vs ?? 'ia') {
 }
 function buHumanTurn() { return bu.mode === 'play' && !bu.s.win && (bu.vs === 'duo' || bu.s.turn === bus.side); }
 function buPlay(m) {
-  bu.s = buApply(bu.s, m); bu.sel = bu.pend = null; bu.flash = {m, t: bu.tick, fell: bu.s.fell};
+  bu.anim = {t: bu.tick, list: buAnim(bu.s, m)}; bu.s = buApply(bu.s, m); bu.sel = bu.pend = null; bu.flash = {m, t: bu.tick, fell: bu.s.fell};
   buBeep(m.k === 'push' || m.k === 'pushin' ? 140 : m.k === 'exit' ? 330 : 520, m.k === 'push' || m.k === 'pushin' ? .16 : .06, m.k === 'push' || m.k === 'pushin' ? 'sawtooth' : 'square', m.k === 'push' || m.k === 'pushin' ? 90 : 0);
   if (bu.s.win) {
     bu.mode = 'over'; bu.overAt = bu.tick;
@@ -510,14 +589,19 @@ function buDraw() {
   // les réserves : à gauche les éléphants, à droite les rhinocéros
   for (const [team, x0] of [['E', 8], ['R', BU.W - 56]]) {
     const mine = buHumanTurn() && s.turn === team, on = bu.sel?.res && s.turn === team;
-    px(g, '#14100c', x0 - 1, BU.Y0 - 9, 50, 178); px(g, on ? '#5a4a28' : '#2a2418', x0, BU.Y0 - 8, 48, 176);
+    px(g, '#14100c', x0 - 1, BU.Y0 - 9, 50, 178); g.drawImage(BU_PANEL, x0, BU.Y0 - 8); if (on) { g.fillStyle = 'rgba(255,216,74,.2)'; g.fillRect(x0, BU.Y0 - 8, 48, 176); }
+    px(g, '#14100c', x0 + 2, BU.Y0 - 8, 44, 11); px(g, '#2a1a0e', x0 + 3, BU.Y0 - 7, 42, 9);
     pxFont(g, team === 'E' ? 'ÉLÉPHANTS' : 'RHINOS', x0 + 24, BU.Y0 - 1, s.turn === team && bu.mode === 'play' ? '#ffd84a' : '#a89878', 6, 'center');
     for (let k = 0; k < s.res[team]; k++) buPiece(g, {t: team, d: team === 'E' ? 2 : 0}, x0 + 8, BU.Y0 + 4 + k * 31);
     if (mine && s.res[team]) hit(x0, BU.Y0 - 8, 48, 176, () => { bu.sel = bu.sel?.res ? null : {res: team}; bu.pend = null; }, 'réserve des ' + BU_TEAM[team].toLowerCase());
   }
   // le dernier coup (cases entourées en pointillé), les pièces, la sélection
   if (bu.flash?.m && bu.mode !== 'menu') { const m = bu.flash.m; for (const i of [m.from, m.to].filter(i => i != null && i >= 0)) { const [x, y] = buCell(i); for (let k = 0; k < 32; k += 3) { px(g, '#fff0c0', x + k, y, 1, 1); px(g, '#fff0c0', x + k, y + 31, 1, 1); px(g, '#fff0c0', x, y + k, 1, 1); px(g, '#fff0c0', x + 31, y + k, 1, 1); } } }
-  for (let i = 0; i < 25; i++) { const p = s.b[i]; if (!p) continue; const [x, y] = buCell(i); buPiece(g, p, x, y, bu.pend?.from === i && bu.pend.k !== 'rot' ? .35 : 1);
+  const an = bu.anim && bu.tick - bu.anim.t < 12 ? bu.anim : null, ak = an ? 1 - (1 - (bu.tick - an.t) / 12) ** 3 : 1;
+  for (let i = 0; i < 25; i++) { const p = s.b[i]; if (!p) continue; const [x, y] = buCell(i), e = an?.list.find(o => o.to === i);
+    const a = e?.a0 != null ? e.a0 + (((p.d - e.a0 + 6) % 4) - 2) * ak : null, lift = e && ak < 1 ? -Math.round(Math.sin(ak * Math.PI) * 3) : 0;
+    const hop = bu.sel?.i === i ? -Math.round(Math.abs(Math.sin(bu.tick / 9)) * 2) : 0;  // l'animal choisi sautille
+    buPiece(g, p, x + (e ? e.dx * (1 - ak) : 0), y + (e ? e.dy * (1 - ak) : 0) + lift + hop, (bu.pend?.from === i && bu.pend.k !== 'rot' ? .35 : 1) * (e?.fade ? ak : 1), a);
     if (buHumanTurn() && p.t === s.turn) hit(x, y, 32, 32, () => { bu.sel = bu.sel?.i === i ? null : {i}; bu.pend = null; }, BU_TEAM[p.t].toLowerCase().slice(0, -1) + ' en ' + 'ABCDE'[i % 5] + (Math.floor(i / 5) + 1)); }
   if (bu.sel?.i != null) { const [x, y] = buCell(bu.sel.i); for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { px(g, '#ffd84a', x + a * 26, y + b * 31, 6, 1); px(g, '#ffd84a', x + a * 31, y + b * 26, 1, 6); } }  // quatre coins dorés
   // les cibles : vert = aller là (puis choisir le regard), orange = pousser, rouge = sortir
@@ -539,7 +623,7 @@ function buDraw() {
   // la chute d'une pièce : elle s'éloigne et pâlit
   const fl = bu.flash; if (fl?.fell && bu.tick - fl.t < 30) { const [x, y] = buCell(fl.fell.at), k = (bu.tick - fl.t) / 30, d = fl.m.d; buPiece(g, fl.fell.p, x + BU_D[d][1] * 32 * (.6 + k), y + BU_D[d][0] * 32 * (.6 + k), 1 - k); }
   // le bandeau : à qui le tour
-  px(g, '#14100c', 0, 0, BU.W, 22); px(g, '#2a2418', 0, 0, BU.W, 21);
+  px(g, '#14100c', 0, 0, BU.W, 22); px(g, '#3a2414', 0, 0, BU.W, 21); for (let x = 0; x < BU.W; x += 16) px(g, '#4a301a', x, 1, 15, 19); px(g, '#e8b84a', 0, 20, BU.W, 1);
   const who = s.turn, txt = bu.mode !== 'play' ? 'BOUSCULADE' : bu.vs === 'ia' && who !== bus.side ? "L'ordinateur réfléchit…" : (bu.vs === 'ia' ? 'À toi' : 'Au tour des ' + BU_TEAM[who].toLowerCase()) + ' : ' + (bu.pend ? 'choisis où il regarde' : bu.sel ? 'choisis une case' : 'choisis un animal');
   pxFont(g, txt, BU.W / 2, 14, bu.mode === 'play' ? (who === 'E' ? '#9ac0ff' : '#ffb0a0') : '#ffd84a', 7, 'center');
   if (bu.mode === 'play') { hit(BU.W - 54, 3, 50, 15, () => { bu.mode = 'menu'; bu.sel = bu.pend = null; }, 'menu'); px(g, '#14100c', BU.W - 54, 3, 50, 15); px(g, '#4a3e2a', BU.W - 53, 4, 48, 13); pxFont(g, 'MENU', BU.W - 29, 14, '#e8d8b8', 6, 'center'); }
