@@ -25,14 +25,19 @@ Toute la file de pièces devant l'animal avance d'une case, si la force suffit :
 
 Un animal poussé hors du plateau retourne dans la réserve de son camp.
 
+**Avant de pousser**, la force s'affiche : un **+** vert sur chaque animal qui pousse, un **−** rouge sur chaque animal qui regarde en face, un point gris sur chaque rocher, et le compte en haut (« +2 −1 = 1 contre 1 rocher : ça passe ! »). Quand la force ne suffit pas, une flèche grise le montre au lieu de la flèche orange.
+
+L'éléphant qui pousse **barrit** en agitant les oreilles, le rhinocéros **souffle** par les naseaux ; au repos, les oreilles bougent de temps en temps.
+
 ## Gagner
 
 Quand un rocher sort du plateau, c'est l'animal **le plus proche derrière lui** qui regarde dans le sens de la poussée qui fait gagner son camp, **même si c'est l'adversaire** qui a poussé !
 
 ## Commandes
 
-- **Souris** : clique un animal (ou ta réserve), puis une cible : carré vert = y aller, flèche orange = pousser, flèche rouge = sortir. Puis clique la flèche du regard.
+- **Souris** : clique un animal (ou ta réserve), puis une cible : carré vert = y aller, flèche orange = pousser, flèche rouge = sortir, flèche grise = pas assez de force (survole une flèche pour voir le compte). Puis clique la flèche du regard.
 - **Clavier** : les flèches passent d'une zone à l'autre, **Entrée** ou **Espace** choisit, **Échap** annule.
+- **Plein écran** : le bouton à droite du plateau (Échap pour revenir). Le plateau prend toute la place de la fenêtre, petite ou grande.
 
 ## L'ordinateur
 

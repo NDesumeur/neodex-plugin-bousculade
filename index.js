@@ -5,14 +5,16 @@ const HTML = `<div class="appWrap wide">
   <div class="gMain"><div class="gameBox"><canvas id="buCanvas" width="320" height="240" role="img" aria-label="Bousculade"></canvas></div>
     <div class="gSide">
       <div class="sysCard"><b>RECORDS</b><div class="gStats" id="buStats"></div></div>
-      <div class="row"><button class="btn main" id="buNew">NOUVELLE PARTIE</button></div>
+      <div class="row"><button class="btn main" id="buNew">NOUVELLE PARTIE</button><button class="btn" id="buFs">PLEIN ÉCRAN</button></div>
       <div class="hint">Éléphants contre rhinocéros, trois rochers au milieu. À ton tour, une seule action : faire entrer un animal de ta réserve sur une case du bord, en déplacer un d'une case, le tourner sur place, le faire sortir par un bord, ou pousser droit devant. Après un déplacement ou une entrée, choisis où il regarde. Pour pousser, la force doit suffire : chaque animal qui regarde dans le sens de la poussée compte +1, chaque animal qui regarde en face −1, et chaque rocher demande 1 de force. Quand un rocher sort, c'est l'animal le plus proche derrière lui, qui regarde dans le sens de la poussée, qui fait gagner son camp, même si c'est l'adversaire !</div>
     </div></div>
 </div>`;
 const CSS = `.gMain{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
-.gameBox{display:grid;place-items:center;padding:10px;background:#05010b;flex:0 0 auto;position:relative}
-.gameBox canvas{height:min(72vh,640px);width:auto;aspect-ratio:320/240;image-rendering:pixelated;cursor:var(--cp,pointer);touch-action:none}
-.gSide{display:flex;flex-direction:column;gap:14px;flex:1;min-width:250px;max-width:420px}
+.gameBox{display:grid;place-items:center;padding:10px;background:#05010b;flex:2;min-width:320px;position:relative}
+.gameBox canvas{width:min(100%,max(320px,calc((100vh - 200px) * 320 / 240)));height:auto;aspect-ratio:320/240;image-rendering:pixelated;cursor:var(--cp,pointer);touch-action:none}
+.gameBox:fullscreen{padding:0;display:grid;place-items:center}
+.gameBox:fullscreen canvas{width:min(100vw,calc(100vh * 320 / 240))}
+.gSide{display:flex;flex-direction:column;gap:14px;flex:0 1 320px;min-width:250px}
 .gSide .sysCard{display:flex;flex-direction:column}
 .gStats{display:grid;grid-template-columns:1fr auto;gap:4px 14px}
 .gStats b{text-align:right}`;
@@ -331,15 +333,26 @@ const renew = (old, o) => { if (!old) return o; for (const k of Object.keys(old)
 const bus = gstore('bousculade', {wins: [0, 0, 0], losses: [0, 0, 0], duels: 0, level: 1, side: 'E'});
 let bu = null, buac = null, buMute = false;
 function buBeep(f, d, type = 'square', slide = 0, vol = .03) { if (buMute) return; try { buac ??= new AudioContext(); const o = buac.createOscillator(), g = buac.createGain(), t = buac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(g).connect(buac.destination); o.start(t); o.stop(t + d); } catch {} }
+function buNoise(d, f, vol = .05, at = 0) {  // un souffle : du bruit filtré autour de f
+  if (buMute) return; try { buac ??= new AudioContext(); const t = buac.currentTime + at, n = buac.createBufferSource(), b = buac.createBuffer(1, Math.ceil(buac.sampleRate * d), buac.sampleRate), ch = b.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+    const bp = buac.createBiquadFilter(), g = buac.createGain(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(f, t); bp.frequency.exponentialRampToValueAtTime(f * .5, t + d); bp.Q.value = 1.2;
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + d * .2); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    n.buffer = b; n.connect(bp).connect(g).connect(buac.destination); n.start(t); } catch {}
+}
+function buCry(t) {  // l'éléphant barrit (deux notes cuivrées qui montent), le rhinocéros souffle deux fois par les naseaux
+  if (t === 'E') { buBeep(294, .28, 'sawtooth', 587, .035); setTimeout(() => buBeep(440, .34, 'sawtooth', 698, .03), 110); }
+  else if (t === 'R') { buNoise(.16, 900, .09); buNoise(.22, 700, .08, .2); }
+}
 /* les règles (sans dessin : l'ordinateur s'en sert aussi). Le plateau : 25 cases, null ou {t: 'E' | 'R' | 'O' (rocher), d: 0 à 3} */
 const buStart = () => ({b: Array.from({length: 25}, (_, i) => i >= 11 && i <= 13 ? {t: 'O', d: 0} : null), res: {E: 5, R: 5}, turn: 'E', win: null, n: 0, last: null});
 const buStep = (i, d) => { const r = Math.floor(i / 5) + BU_D[d][0], c = i % 5 + BU_D[d][1]; return r < 0 || r > 4 || c < 0 || c > 4 ? -1 : r * 5 + c; };
 const buOut = i => { const r = Math.floor(i / 5), c = i % 5, o = []; if (r === 0) o.push(0); if (c === 4) o.push(1); if (r === 4) o.push(2); if (c === 0) o.push(3); return o; };  // les côtés par où la case touche le bord
 // une poussée qui commence sur la case i (occupée), dans le sens d, par un animal qui arrive derrière : la file à pousser et si la force suffit
 function buForce(s, i, d) {
-  let f = 1, rocks = 0; const line = [];
-  for (let j = i; j >= 0 && s.b[j]; j = buStep(j, d)) { const p = s.b[j]; line.push(j); if (p.t === 'O') rocks++; else if (p.d === d) f++; else if (p.d === (d + 2) % 4) f--; }
-  return {ok: line.length > 0 && f > 0 && f >= rocks, line};
+  let f = 1, rocks = 0, plus = 1, minus = 0; const line = [];
+  for (let j = i; j >= 0 && s.b[j]; j = buStep(j, d)) { const p = s.b[j]; line.push(j); if (p.t === 'O') rocks++; else if (p.d === d) { f++; plus++; } else if (p.d === (d + 2) % 4) { f--; minus++; } }
+  return {ok: line.length > 0 && f > 0 && f >= rocks, line, f, rocks, plus, minus};
 }
 function buMoves(s) {
   if (s.win) return [];
@@ -443,32 +456,7 @@ function buBlanket(x, y, x0, y0, x1, y1, c) {
   return x - x0 < 2 || y - y0 < 2 ? c[1] : c[0];
 }
 const BU_SPR = {
-  E: buShape((x, y) => {  // l'éléphant : trompe annelée qui s'enroule, défenses, grandes oreilles roses dedans, couverture bleue
-    if (y <= 1 && x >= 12 && x <= 15) return y === 0 ? (x === 12 || x === 15 ? null : BU_GREY[1]) : BU_GREY[x === 12 ? 1 : 2];  // le bout de la trompe, recourbé
-    if (x >= 13 && x <= 14 && y >= 2 && y <= 6) return y % 2 ? BU_GREY[x === 13 ? 2 : 1] : BU_GREY[x === 13 ? 1 : 0];
-    if ((x === 10 || x === 17) && y >= 4 && y <= 7) return BU_IVORY[y === 4 ? 2 : x === 10 ? 1 : 0];  // les défenses
-    if ((x === 10 || x === 17) && y === 9) return '#14100c';  // les yeux
-    if (buIn(x, y, 14, 10, 5.5, 4.6)) return buShade(x, y, 14, 10, 5.5, 4.6, BU_GREY, .1);  // la tête
-    if (buIn(x, y, 5.6, 13, 5, 6.8) || buIn(x, y, 22.4, 13, 5, 6.8)) { const cx = x < 14 ? 5.6 : 22.4;  // les oreilles, le dedans rose
-      if (buIn(x, y, cx + (x < 14 ? .8 : -.8), 13.4, 3.1, 4.8)) return buShade(x, y, cx, 13, 5, 6.8, BU_EAR);
-      return buShade(x, y, cx, 13, 5, 6.8, BU_GREY, -.15); }
-    const bl = buBlanket(x, y, 9, 14, 18, 23, BU_TEAMC.E); if (bl && buIn(x, y, 14, 19, 8.6, 7.8)) return bl;
-    if (buIn(x, y, 14, 19, 8.6, 7.8)) return buShade(x, y, 14, 19, 8.6, 7.8, BU_GREY);  // le dos
-    if (buIn(x, y, 6.5, 24, 2.2, 1.8) || buIn(x, y, 21.5, 24, 2.2, 1.8)) return x < 14 ? BU_GREY[1] : BU_GREY[0];  // les pattes arrière
-    if (x >= 13 && x <= 14 && y >= 26) return y === 27 ? '#3a3a48' : BU_GREY[0];  // la queue
-  }),
-  R: buShape((x, y) => {  // le rhinocéros : grande corne et petite corne, oreilles pointues, plis de la cuirasse, couverture rouge
-    if (y <= 4 && x >= 12 && x <= 15) { const w = y <= 1 ? [13, 14] : y <= 3 ? [12.6, 14.4] : [12, 15]; return x >= w[0] && x <= w[1] ? BU_IVORY[x <= 13 ? (y < 2 ? 2 : 1) : 0] : null; }  // la grande corne
-    if (x >= 13 && x <= 14 && y >= 6 && y <= 7) return BU_IVORY[x === 13 ? 1 : 0];  // la petite corne
-    if ((x === 9 || x === 18) && y >= 5 && y <= 8) return y === 5 ? BU_BROWN[3] : y === 6 ? BU_BROWN[1] : '#3a2a1e';  // les oreilles pointues
-    if ((x === 10 || x === 17) && y === 10) return '#14100c';  // les yeux
-    if (buIn(x, y, 14, 9, 4.6, 5.4)) return buShade(x, y, 14, 9, 4.6, 5.4, BU_BROWN, .3);  // la tête, plus claire que le corps
-    if (y === 13 && buIn(x, y, 14, 18.5, 9, 8)) return x < 10 || x > 17 ? BU_BROWN[0] : '#3a2a1e';  // le cou, dans l'ombre de la tête
-    const bl = buBlanket(x, y, 9, 15, 18, 23, BU_TEAMC.R); if (bl && buIn(x, y, 14, 18.5, 9, 8)) return bl;
-    if (buIn(x, y, 14, 18.5, 9, 8)) { const t = buShade(x, y, 14, 18.5, 9, 8, BU_BROWN, -.1); return (x === 8 || x === 19 || y === 25) && y > 14 ? BU_BROWN[Math.max(0, BU_BROWN.indexOf(t) - 1)] : t; }  // la cuirasse et ses plis
-    if (buIn(x, y, 6.2, 12.5, 1.8, 2) || buIn(x, y, 21.8, 12.5, 1.8, 2) || buIn(x, y, 6.2, 24, 1.8, 2) || buIn(x, y, 21.8, 24, 1.8, 2)) return x < 14 ? BU_BROWN[1] : BU_BROWN[0];  // les pattes
-    if (x >= 13 && x <= 14 && y >= 26) return y === 27 ? '#2a1e14' : BU_BROWN[0];
-  }),
+  E: buEle(0), E2: buEle(1), R: buRhino(0), R2: buRhino(1),
   O: buShape((x, y) => {  // le rocher : trois bosses modelées, une fissure, de la mousse sur le dessus
     const R = [['#4a4640', '#6a645a', '#8e877a', '#b8b0a0'], ['#45413b', '#625c52', '#857e72', '#aaa294']];
     if ((x === 15 && y >= 12 && y <= 15) || (x === 16 && y >= 15 && y <= 18) || (y === 18 && x >= 17 && x <= 18)) return buIn(x, y, 14, 15, 11, 9.5) ? '#35312c' : null;  // la fissure
@@ -477,6 +465,40 @@ const BU_SPR = {
     if (buIn(x, y, 14, 16, 11, 9)) return buShade(x, y, 14, 16, 11, 9, R[0], -.05);
   }),
 };
+// fold : les oreilles rabattues vers le dos (l'image qui alterne avec la normale quand l'éléphant les fait battre)
+function buEle(fold) {
+  const ex = [5.6 + fold * 1.4, 22.4 - fold * 1.4], erx = 5 - fold * 1.4;
+  return buShape((x, y) => {  // l'éléphant : trompe annelée qui s'enroule, défenses, grandes oreilles roses dedans, couverture bleue
+    if (y <= 1 && x >= 12 && x <= 15) return y === 0 ? (x === 12 || x === 15 ? null : BU_GREY[1]) : BU_GREY[x === 12 ? 1 : 2];  // le bout de la trompe, recourbé
+    if (x >= 13 && x <= 14 && y >= 2 && y <= 6) return y % 2 ? BU_GREY[x === 13 ? 2 : 1] : BU_GREY[x === 13 ? 1 : 0];
+    if ((x === 10 || x === 17) && y >= 4 && y <= 7) return BU_IVORY[y === 4 ? 2 : x === 10 ? 1 : 0];  // les défenses
+    if ((x === 10 || x === 17) && y === 9) return '#14100c';  // les yeux
+    if (buIn(x, y, 14, 10, 5.5, 4.6)) return buShade(x, y, 14, 10, 5.5, 4.6, BU_GREY, .1);  // la tête
+    if (buIn(x, y, ex[0], 13, erx, 6.8) || buIn(x, y, ex[1], 13, erx, 6.8)) { const cx = x < 14 ? ex[0] : ex[1];  // les oreilles, le dedans rose
+      if (buIn(x, y, cx + (x < 14 ? .8 : -.8), 13.4, erx - 1.9, 4.8)) return buShade(x, y, cx, 13, erx, 6.8, BU_EAR);
+      return buShade(x, y, cx, 13, erx, 6.8, BU_GREY, -.15); }
+    const bl = buBlanket(x, y, 9, 14, 18, 23, BU_TEAMC.E); if (bl && buIn(x, y, 14, 19, 8.6, 7.8)) return bl;
+    if (buIn(x, y, 14, 19, 8.6, 7.8)) return buShade(x, y, 14, 19, 8.6, 7.8, BU_GREY);  // le dos
+    if (buIn(x, y, 6.5, 24, 2.2, 1.8) || buIn(x, y, 21.5, 24, 2.2, 1.8)) return x < 14 ? BU_GREY[1] : BU_GREY[0];  // les pattes arrière
+    if (x >= 13 && x <= 14 && y >= 26) return y === 27 ? '#3a3a48' : BU_GREY[0];  // la queue
+  });
+}
+// sw : les oreilles qui se dressent et la queue qui fouette sur le côté
+function buRhino(sw) {
+  return buShape((x, y) => {  // le rhinocéros : grande corne et petite corne, oreilles pointues, plis de la cuirasse, couverture rouge
+    if (y <= 4 && x >= 12 && x <= 15) { const w = y <= 1 ? [13, 14] : y <= 3 ? [12.6, 14.4] : [12, 15]; return x >= w[0] && x <= w[1] ? BU_IVORY[x <= 13 ? (y < 2 ? 2 : 1) : 0] : null; }  // la grande corne
+    if (x >= 13 && x <= 14 && y >= 6 && y <= 7) return BU_IVORY[x === 13 ? 1 : 0];  // la petite corne
+    if ((x === 9 - sw || x === 18 + sw) && y >= 5 - sw && y <= 8 - sw) return y === 5 - sw ? BU_BROWN[3] : y === 6 - sw ? BU_BROWN[1] : '#3a2a1e';  // les oreilles pointues (dressées et écartées quand il les remue)
+    if ((x === 10 || x === 17) && y === 10) return '#14100c';  // les yeux
+    if (buIn(x, y, 14, 9, 4.6, 5.4)) return buShade(x, y, 14, 9, 4.6, 5.4, BU_BROWN, .3);  // la tête, plus claire que le corps
+    if (y === 13 && buIn(x, y, 14, 18.5, 9, 8)) return x < 10 || x > 17 ? BU_BROWN[0] : '#3a2a1e';  // le cou, dans l'ombre de la tête
+    const bl = buBlanket(x, y, 9, 15, 18, 23, BU_TEAMC.R); if (bl && buIn(x, y, 14, 18.5, 9, 8)) return bl;
+    if (buIn(x, y, 14, 18.5, 9, 8)) { const t = buShade(x, y, 14, 18.5, 9, 8, BU_BROWN, -.1); return (x === 8 || x === 19 || y === 25) && y > 14 ? BU_BROWN[Math.max(0, BU_BROWN.indexOf(t) - 1)] : t; }  // la cuirasse et ses plis
+    if (buIn(x, y, 6.2, 12.5, 1.8, 2) || buIn(x, y, 21.8, 12.5, 1.8, 2) || buIn(x, y, 6.2, 24, 1.8, 2) || buIn(x, y, 21.8, 24, 1.8, 2)) return x < 14 ? BU_BROWN[1] : BU_BROWN[0];  // les pattes
+    if (x >= 13 + sw * 2 && x <= 14 + sw * 2 && y >= 26) return y === 27 ? '#2a1e14' : BU_BROWN[0];
+    if (sw && x >= 13 && x <= 14 && y === 26) return BU_BROWN[0];  // la queue part toujours du milieu
+  });
+}
 // l'ombre de chaque pièce : sa silhouette en noir transparent, posée un peu en bas à droite
 const BU_SH = Object.fromEntries(Object.entries(BU_SPR).map(([k, c]) => [k, cnv(28, 28, b => { b.drawImage(c, 0, 0); b.globalCompositeOperation = 'source-in'; b.fillStyle = 'rgba(10,6,2,.38)'; b.fillRect(0, 0, 28, 28); })]));
 const BU_BG = cnv(BU.W, BU.H, b => {  // la jungle (feuilles en couches, fleurs), le cadre de pierres taillées, les dalles de terre battue
@@ -528,10 +550,10 @@ const BU_PANEL = cnv(48, 176, b => {  // les réserves : un panneau de planches 
   px(b, '#2a1a0e', 0, 0, 48, 1); px(b, '#2a1a0e', 0, 175, 48, 1);
 });
 const buCell = i => [BU.X0 + (i % 5) * BU.TS, BU.Y0 + Math.floor(i / 5) * BU.TS];
-function buPiece(g, p, x, y, alpha = 1, a = null) {  // une pièce centrée dans sa case de 32 avec son ombre, tournée vers p.d (ou l'angle a, en quarts de tour, pendant une animation)
+function buPiece(g, p, x, y, alpha = 1, a = null, alt = false) {  // alt : l'autre image (oreilles rabattues, queue de côté)  // une pièce centrée dans sa case de 32 avec son ombre, tournée vers p.d (ou l'angle a, en quarts de tour, pendant une animation)
   const rot = p.t === 'O' ? 0 : (a ?? p.d) * Math.PI / 2;
   g.globalAlpha = alpha; g.save(); g.translate(Math.round(x) + 18, Math.round(y) + 19); g.rotate(rot); g.drawImage(BU_SH[p.t], -14, -14); g.restore();
-  g.save(); g.translate(Math.round(x) + 16, Math.round(y) + 16); g.rotate(rot); g.drawImage(BU_SPR[p.t], -14, -14); g.restore(); g.globalAlpha = 1;
+  g.save(); g.translate(Math.round(x) + 16, Math.round(y) + 16); g.rotate(rot); g.drawImage(BU_SPR[alt && p.t !== 'O' ? p.t + '2' : p.t], -14, -14); g.restore(); g.globalAlpha = 1;
 }
 function buArrow(g, x, y, d, col, s = 3) {  // une petite flèche pixel (pointe et tige), vers d, centrée en x, y
   const rot = ([a, b]) => [[a, b], [-b, a], [-a, -b], [b, -a]][d];
@@ -557,7 +579,9 @@ function buNew(vs = bus.vs ?? 'ia') {
 }
 function buHumanTurn() { return bu.mode === 'play' && !bu.s.win && (bu.vs === 'duo' || bu.s.turn === bus.side); }
 function buPlay(m) {
-  bu.anim = {t: bu.tick, list: buAnim(bu.s, m)}; bu.s = buApply(bu.s, m); bu.sel = bu.pend = null; bu.flash = {m, t: bu.tick, fell: bu.s.fell};
+  const shove = m.k === 'push' || m.k === 'pushin', by = shove ? {at: m.k === 'push' ? buStep(m.from, m.d) : m.to, t: m.k === 'push' ? bu.s.b[m.from].t : bu.s.turn} : null;
+  bu.anim = {t: bu.tick, list: buAnim(bu.s, m)}; bu.s = buApply(bu.s, m); bu.sel = bu.pend = null; bu.flash = {m, t: bu.tick, fell: bu.s.fell, by};
+  if (by) buCry(by.t);
   buBeep(m.k === 'push' || m.k === 'pushin' ? 140 : m.k === 'exit' ? 330 : 520, m.k === 'push' || m.k === 'pushin' ? .16 : .06, m.k === 'push' || m.k === 'pushin' ? 'sawtooth' : 'square', m.k === 'push' || m.k === 'pushin' ? 90 : 0);
   if (bu.s.win) {
     bu.mode = 'over'; bu.overAt = bu.tick;
@@ -568,12 +592,13 @@ function buPlay(m) {
 // les cibles possibles pour la pièce choisie : {x, y, kind, m} (m : le coup joué tout de suite) ou {pend} (il reste à choisir le regard)
 function buTargets() {
   const s = bu.s, sel = bu.sel, out = []; if (!sel) return out;
+  if (sel.i != null) { const p = s.b[sel.i], j = buStep(sel.i, p.d); if (j >= 0 && s.b[j] && !buForce(s, j, p.d).ok) { const [x, y] = buCell(j); out.push({kind: 'block', x: x + 16, y: y + 16, d: p.d, start: j}); } }
   for (const m of buMoves(s)) {
     if (sel.res ? !(m.k === 'enter' || m.k === 'pushin') : m.from !== sel.i) continue;
     if (m.k === 'move' || m.k === 'enter' || m.k === 'rot') { const at = m.k === 'rot' ? m.from : m.to; if (!out.some(o => o.at === at && o.kind === m.k)) out.push({kind: m.k, at, pend: {k: m.k, from: m.from, to: m.to, at}}); continue; }
-    if (m.k === 'push') { const [x, y] = buCell(buStep(m.from, m.d)); out.push({kind: 'push', x: x + 16, y: y + 16, d: m.d, m}); continue; }
+    if (m.k === 'push') { const j = buStep(m.from, m.d), [x, y] = buCell(j); out.push({kind: 'push', x: x + 16, y: y + 16, d: m.d, m, start: j}); continue; }
     const at = m.k === 'pushin' ? m.to : m.from, od = m.k === 'pushin' ? (m.d + 2) % 4 : null;
-    for (const o of m.k === 'pushin' ? [od] : buOut(at)) { const [x, y] = buCell(at); out.push({kind: m.k, x: x + 16 + BU_D[o][1] * 22, y: y + 16 + BU_D[o][0] * 22, d: m.k === 'pushin' ? m.d : o, m}); if (m.k === 'exit') break; }
+    for (const o of m.k === 'pushin' ? [od] : buOut(at)) { const [x, y] = buCell(at); out.push({kind: m.k, x: x + 16 + BU_D[o][1] * 22, y: y + 16 + BU_D[o][0] * 22, d: m.k === 'pushin' ? m.d : o, m, start: m.k === 'pushin' ? m.to : null}); if (m.k === 'exit') break; }
   }
   return out;
 }
@@ -583,7 +608,8 @@ function buClick(h) {
   h.act();
 }
 function buDraw() {
-  const g = bu.g, s = bu.s, hits = bu.hits = []; if (!g) return;
+  const g = bu.g, s = bu.s, was = bu.kb ? bu.hits?.[bu.focus] : null, hits = bu.hits = []; if (!g) return;
+  const hot = (x, y, w, h) => was ? was.x === x && was.y === y && was.w === w : bu.ptr && bu.ptr[0] >= x && bu.ptr[0] < x + w && bu.ptr[1] >= y && bu.ptr[1] < y + h;  // la souris dessus, ou le clavier
   const hit = (x, y, w, h, act, label) => hits.push({x, y, w, h, act, label});
   g.drawImage(BU_BG, 0, 0);
   // les réserves : à gauche les éléphants, à droite les rhinocéros
@@ -601,16 +627,29 @@ function buDraw() {
   for (let i = 0; i < 25; i++) { const p = s.b[i]; if (!p) continue; const [x, y] = buCell(i), e = an?.list.find(o => o.to === i);
     const a = e?.a0 != null ? e.a0 + (((p.d - e.a0 + 6) % 4) - 2) * ak : null, lift = e && ak < 1 ? -Math.round(Math.sin(ak * Math.PI) * 3) : 0;
     const hop = bu.sel?.i === i ? -Math.round(Math.abs(Math.sin(bu.tick / 9)) * 2) : 0;  // l'animal choisi sautille
-    buPiece(g, p, x + (e ? e.dx * (1 - ak) : 0), y + (e ? e.dy * (1 - ak) : 0) + lift + hop, (bu.pend?.from === i && bu.pend.k !== 'rot' ? .35 : 1) * (e?.fade ? ak : 1), a);
+    // de temps en temps les oreilles battent (la queue fouette) ; celui qui vient de pousser barrit en agitant les oreilles, ou souffle la queue dressée
+    const ph = (bu.tick + i * 53) % 230, by = bu.flash?.by, cry = by?.at === i && bu.tick - bu.flash.t < 24;
+    const alt = cry ? (p.t === 'E' ? (bu.tick >> 2) % 2 === 1 : true) : ph < 18 && (ph >> 2) % 2 === 1;
+    buPiece(g, p, x + (e ? e.dx * (1 - ak) : 0), y + (e ? e.dy * (1 - ak) : 0) + lift + hop, (bu.pend?.from === i && bu.pend.k !== 'rot' ? .35 : 1) * (e?.fade ? ak : 1), a, alt);
     if (buHumanTurn() && p.t === s.turn) hit(x, y, 32, 32, () => { bu.sel = bu.sel?.i === i ? null : {i}; bu.pend = null; }, BU_TEAM[p.t].toLowerCase().slice(0, -1) + ' en ' + 'ABCDE'[i % 5] + (Math.floor(i / 5) + 1)); }
   if (bu.sel?.i != null) { const [x, y] = buCell(bu.sel.i); for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { px(g, '#ffd84a', x + a * 26, y + b * 31, 6, 1); px(g, '#ffd84a', x + a * 31, y + b * 26, 1, 6); } }  // quatre coins dorés
-  // les cibles : vert = aller là (puis choisir le regard), orange = pousser, rouge = sortir
+  // les cibles : vert = aller là (puis choisir le regard), orange = pousser, rouge = sortir, gris = poussée trop faible
+  let force = null;
   if (buHumanTurn() && !bu.pend) for (const t of buTargets()) {
+    if (t.start != null && (hot(t.x - 7, t.y - 7, 15, 15) || (bu.sel?.i != null && (t.kind === 'push' || t.kind === 'block')))) force ??= {...buForce(s, t.start, t.d), d: t.d, from: t.kind === 'pushin' ? null : bu.sel.i};
+    if (t.kind === 'block') { px(g, '#14100c', t.x - 6, t.y - 6, 13, 13); px(g, '#2e2620', t.x - 5, t.y - 5, 11, 11); buArrow(g, t.x, t.y, t.d, '#8a7e70', 3);
+      hit(t.x - 7, t.y - 7, 15, 15, () => buBeep(150, .14, 'square', 100), 'poussée trop faible'); continue; }
     if (t.pend) { const [x, y] = buCell(t.at); if (t.kind === 'rot') { buArrow(g, x + 16, y + 3, 0, '#7ee07a', 2); } else { px(g, '#14100c', x + 12, y + 12, 8, 8); px(g, '#7ee07a', x + 13, y + 13, 6, 6); }
       hit(x, y, 32, 32, () => { bu.pend = t.pend; }, (t.kind === 'rot' ? 'tourner sur place' : t.kind === 'enter' ? 'entrer en ' : 'aller en ') + (t.kind === 'rot' ? '' : 'ABCDE'[t.at % 5] + (Math.floor(t.at / 5) + 1))); continue; }
     const col = t.kind === 'exit' ? '#ff6a5a' : '#ffa030';
     px(g, '#14100c', t.x - 6, t.y - 6, 13, 13); px(g, t.kind === 'exit' ? '#5a1a14' : '#5a3a10', t.x - 5, t.y - 5, 11, 11); buArrow(g, t.x, t.y, t.d, col, 3);
     hit(t.x - 7, t.y - 7, 15, 15, () => buPlay(t.m), t.kind === 'exit' ? 'sortir du plateau' : 'pousser');
+  }
+  // la force de la poussée : + pour chaque animal qui pousse (celui qui pousse compris), − pour chaque animal qui regarde en face, · pour chaque rocher
+  if (force) {
+    const badge = (i, txt, bg, fg) => { const [x, y] = buCell(i); px(g, '#14100c', x + 21, y + 1, 10, 10); px(g, bg, x + 22, y + 2, 8, 8); pxFont(g, txt, x + 26, y + 9, fg, 6, 'center'); };
+    if (force.from != null) badge(force.from, '+', '#2f8a3a', '#e8ffd8');
+    for (const j of force.line) { const p = s.b[j]; if (p.t === 'O') badge(j, '·', '#5a544a', '#e8e0d0'); else if (p.d === force.d) badge(j, '+', '#2f8a3a', '#e8ffd8'); else if (p.d === (force.d + 2) % 4) badge(j, '-', '#a82a22', '#ffe0d8'); }
   }
   // le choix du regard : quatre flèches autour de la case, la pièce fantôme tourne vers la flèche survolée
   if (bu.pend) {
@@ -622,10 +661,21 @@ function buDraw() {
   }
   // la chute d'une pièce : elle s'éloigne et pâlit
   const fl = bu.flash; if (fl?.fell && bu.tick - fl.t < 30) { const [x, y] = buCell(fl.fell.at), k = (bu.tick - fl.t) / 30, d = fl.m.d; buPiece(g, fl.fell.p, x + BU_D[d][1] * 32 * (.6 + k), y + BU_D[d][0] * 32 * (.6 + k), 1 - k); }
+  // le cri de celui qui pousse : ondes du barrissement devant la trompe, deux bouffées de souffle aux naseaux du rhinocéros
+  if (fl?.by && bu.tick - fl.t < 36 && s.b[fl.by.at]) { const k = bu.tick - fl.t, D = BU_D[fl.m.d], [cx0, cy0] = buCell(fl.by.at), cx = cx0 + 16, cy = cy0 + 16, pr = [D[1], D[0]];  // pr : le côté (perpendiculaire)
+    if (fl.by.t === 'E') for (let w = 0; w < 3; w++) { const age = k - w * 6; if (age < 0 || age > 24) continue; const dist = 15 + w * 5 + age * .25, half = 3 + w * 2, col = age > 18 ? '#c8b898' : '#fff8d8';
+      for (let q = -half; q <= half; q++) { const bend = Math.round((q / half) ** 2 * 2), d0 = dist - bend;  // une onde en arc, cernée de noir pour se voir sur le rocher
+        px(g, '#14100c', cx + D[1] * (d0 - 1) + pr[1] * q, cy + D[0] * (d0 - 1) + pr[0] * q, 1, 1); px(g, '#14100c', cx + D[1] * (d0 + 2) + pr[1] * q, cy + D[0] * (d0 + 2) + pr[0] * q, 1, 1);
+        for (const e of [0, 1]) px(g, col, cx + D[1] * (d0 + e) + pr[1] * q, cy + D[0] * (d0 + e) + pr[0] * q); } }
+    else for (const sd of [-1, 1]) for (const [t0, big] of [[0, 3], [10, 2]]) { const age = k - t0; if (age < 0 || age > 24) continue; const out = 10 + age * .35, side = 5 + age * .25, sz = age > 14 ? big - 1 : big;
+      g.globalAlpha = 1 - age / 26; px(g, '#e8e8f0', cx + D[1] * out + pr[1] * side * sd - sz / 2, cy + D[0] * out + pr[0] * side * sd - sz / 2, sz, sz); g.globalAlpha = 1; }
+  }
   // le bandeau : à qui le tour
   px(g, '#14100c', 0, 0, BU.W, 22); px(g, '#3a2414', 0, 0, BU.W, 21); for (let x = 0; x < BU.W; x += 16) px(g, '#4a301a', x, 1, 15, 19); px(g, '#e8b84a', 0, 20, BU.W, 1);
-  const who = s.turn, txt = bu.mode !== 'play' ? 'BOUSCULADE' : bu.vs === 'ia' && who !== bus.side ? "L'ordinateur réfléchit…" : (bu.vs === 'ia' ? 'À toi' : 'Au tour des ' + BU_TEAM[who].toLowerCase()) + ' : ' + (bu.pend ? 'choisis où il regarde' : bu.sel ? 'choisis une case' : 'choisis un animal');
-  pxFont(g, txt, BU.W / 2, 14, bu.mode === 'play' ? (who === 'E' ? '#9ac0ff' : '#ffb0a0') : '#ffd84a', 7, 'center');
+  const forceTxt = force && (force.minus ? '+' + force.plus + ' -' + force.minus + ' = ' + force.f : 'Force ' + force.plus) + (force.rocks ? ' contre ' + force.rocks + (force.rocks > 1 ? ' rochers' : ' rocher') : '') + (force.ok ? ' : ça passe !' : ' : trop faible');
+  bu.forceTxt = force && bu.mode === 'play' ? forceTxt : '';
+  const who = s.turn, txt = force && bu.mode === 'play' ? forceTxt : bu.mode !== 'play' ? 'BOUSCULADE' : bu.vs === 'ia' && who !== bus.side ? "L'ordinateur réfléchit…" : (bu.vs === 'ia' ? 'À toi' : 'Au tour des ' + BU_TEAM[who].toLowerCase()) + ' : ' + (bu.pend ? 'choisis où il regarde' : bu.sel ? 'choisis une case' : 'choisis un animal');
+  pxFont(g, txt, force && bu.mode === 'play' ? (BU.W - 58) / 2 : BU.W / 2, 14, force && bu.mode === 'play' ? (force.ok ? '#b8f0a0' : '#ff9a8a') : bu.mode === 'play' ? (who === 'E' ? '#9ac0ff' : '#ffb0a0') : '#ffd84a', 7, 'center');
   if (bu.mode === 'play') { hit(BU.W - 54, 3, 50, 15, () => { bu.mode = 'menu'; bu.sel = bu.pend = null; }, 'menu'); px(g, '#14100c', BU.W - 54, 3, 50, 15); px(g, '#4a3e2a', BU.W - 53, 4, 48, 13); pxFont(g, 'MENU', BU.W - 29, 14, '#e8d8b8', 6, 'center'); }
   if (bu.mode === 'menu') buMenu(g, hit);
   if (bu.mode === 'over' && bu.tick - bu.overAt > 30) {
@@ -678,9 +728,11 @@ document.addEventListener('keydown', e => {
 { const cv = $('buCanvas'), at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * BU.W, (e.clientY - r.top) / r.height * BU.H]; };
   const find = (x, y) => [...(bu?.hits || [])].reverse().find(h => x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h);
   cv.onpointerdown = e => { e.preventDefault(); if (!bu) return; bu.kb = false; const [x, y] = at(e), h = find(x, y); if (h) buClick(h); else { bu.sel = null; bu.pend = null; } };
-  cv.onpointermove = e => { if (!bu) return; const [x, y] = at(e), h = find(x, y); bu.hoverD = h?.d ?? bu.hoverD; cv.style.cursor = h ? 'pointer' : ''; };
+  cv.onpointermove = e => { if (!bu) return; const [x, y] = at(e), h = find(x, y); bu.ptr = [x, y]; bu.kb = false; bu.hoverD = h?.d ?? bu.hoverD; cv.style.cursor = h ? 'pointer' : ''; };
+  cv.onpointerleave = () => { if (bu) bu.ptr = null; };
   cv.oncontextmenu = e => { e.preventDefault(); if (bu) { bu.sel = null; bu.pend = null; } }; }
 $('buNew').onclick = () => { bu.mode = 'menu'; bu.sel = bu.pend = null; $('buNew').blur(); };
+$('buFs').onclick = () => { $('buCanvas').parentElement.requestFullscreen?.().catch(() => {}); $('buFs').blur(); };
 setTimeout(() => {  // vérification, 2 s après le chargement : les règles de poussée et de victoire, et l'ordinateur qui voit un coup gagnant
   const bad = [], st = () => ({b: Array(25).fill(null), res: {E: 5, R: 5}, turn: 'E', win: null, n: 0});
   if (buMoves(buStart()).length !== 64) bad.push('départ');
@@ -692,6 +744,7 @@ setTimeout(() => {  // vérification, 2 s après le chargement : les règles de 
   s = st(); s.b[9] = {t: 'E', d: 0}; s.b[4] = {t: 'O'}; s.b[8] = {t: 'O'}; s.b[13] = {t: 'O'}; if (buApply(s, buThink(s, 1, () => .5)).win !== 'E') bad.push('ordinateur');
   console.assert(!bad.length, 'bousculade', bad);
 }, 2000);
+$('buCanvas').__bu = {st: () => bu, start: buStart, spr: BU_SPR};  // pour l'auto-test
 ctx.onOpen(() => {
   if (!bu || !bu.g) { buNew(); bu.g = $('buCanvas').getContext('2d'); }
   if (bu.mode === 'pause') bu.mode = 'play';  // quitter l'onglet met la boucle en pause

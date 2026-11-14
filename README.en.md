@@ -25,14 +25,19 @@ The whole line of pieces in front of the animal moves one square, if the strengt
 
 An animal pushed off the board goes back to its side's reserve.
 
+**Before pushing**, the strength is shown: a green **+** on each animal pushing, a red **−** on each animal facing against, a grey dot on each rock, and the count at the top ("+2 −1 = 1 against 1 rock: it goes!"). When the strength is not enough, a grey arrow shows it instead of the orange one.
+
+The elephant that pushes **trumpets** and flaps its ears, the rhino **snorts**; at rest, ears twitch now and then.
+
 ## Winning
 
 When a rock goes off the board, the **nearest animal behind it** facing the push direction wins for its side, **even if the opponent** did the pushing!
 
 ## Controls
 
-- **Mouse**: click an animal (or your reserve), then a target: green square = go there, orange arrow = push, red arrow = leave. Then click the arrow for the facing.
+- **Mouse**: click an animal (or your reserve), then a target: green square = go there, orange arrow = push, red arrow = leave, grey arrow = not enough strength (hover an arrow to see the count). Then click the arrow for the facing.
 - **Keyboard**: arrows move between zones, **Enter** or **Space** picks, **Esc** cancels.
+- **Full screen**: the button beside the board (Esc to come back). The board takes all the room of the window, small or large.
 
 ## The computer
 
