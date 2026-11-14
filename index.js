@@ -10,7 +10,7 @@ const HTML = `<div class="appWrap wide">
     </div></div>
 </div>`;
 const CSS = `.gMain{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
-.gameBox{display:grid;place-items:center;padding:10px;background:#05010b;flex:2;min-width:320px;position:relative}
+.gameBox{display:grid;place-items:center;padding:10px;background:#05010b;flex:2 1 520px;min-width:min(100%,520px);position:relative}
 .gameBox canvas{width:min(100%,max(320px,calc((100vh - 200px) * 320 / 240)));height:auto;aspect-ratio:320/240;image-rendering:pixelated;cursor:var(--cp,pointer);touch-action:none}
 .gameBox:fullscreen{padding:0;display:grid;place-items:center}
 .gameBox:fullscreen canvas{width:min(100vw,calc(100vh * 320 / 240))}
