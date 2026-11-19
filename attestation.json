@@ -1,9 +1,9 @@
 {
   "pluginId": "neodex.bousculade",
   "repo": "NDesumeur/neodex-plugin-bousculade",
-  "version": "1.2.0",
-  "sha256": "c46913a41aeab246cffffdbb3a2c00bfb1e478dccdf4089be535e157dfef2dd9",
-  "approvedAt": "2026-11-19T16:12:34.731Z",
+  "version": "1.2.1",
+  "sha256": "e01844349679e9f6602e2f0357fec39c3aa682796cf8f3dd6d5ebc8ea562ccb6",
+  "approvedAt": "2026-11-19T23:26:43.197Z",
   "neobase": ">=4.2.0",
-  "signature": "pKLaboxlVts+GLFAwqESBwTFJVL4sFv04+UgiWg84/ku9PnOhrPR9uxAtxJB6qjT31qktCytibJBcHvbM/jaDg=="
+  "signature": "J/Uq/wwp2dEq7dYVIWpaoTpeDZebDAHGbanjILX1zEsu1Mk4/D4DvJ5THb7fHS2xVraL+5TYWkTv3AVFyeq/CA=="
 }
