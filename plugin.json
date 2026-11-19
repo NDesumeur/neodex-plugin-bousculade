@@ -1,13 +1,13 @@
 {
   "id": "neodex.bousculade",
   "name": "Bousculade",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": "NDesumeur",
-  "description": "Jeu de plateau en pixel art : éléphants contre rhinocéros sur un plateau de 5 × 5, à qui poussera le premier un rocher hors du plateau. Entrer, se déplacer, se tourner, sortir ou pousser : la force de chaque poussée dépend du regard des animaux alignés. Contre l'ordinateur (facile, normal, difficile) ou à deux sur le même PC. Avant de pousser, la force s'affiche sur chaque animal de la file ; l'éléphant barrit et le rhinocéros souffle quand ils poussent ; plein écran, et le plateau s'adapte à la taille de la fenêtre.",
+  "description": "Jeu de plateau en pixel art : éléphants contre rhinocéros sur un plateau de 5 × 5, à qui poussera le premier un rocher hors du plateau. Entrer, se déplacer, se tourner, sortir ou pousser : la force de chaque poussée dépend du regard des animaux alignés. Contre l'ordinateur (facile, normal, difficile) à deux sur le même PC, ou à distance avec un ami grâce à un code de partie. Avant de pousser, la force s'affiche sur chaque animal de la file ; l'éléphant barrit et le rhinocéros souffle quand ils poussent ; plein écran, et le plateau s'adapte à la taille de la fenêtre.",
   "icon": "icon.png",
   "entry": "index.js",
   "view": "bousculade",
-  "neobase": ">=4.0.0",
+  "neobase": ">=4.2.0",
   "type": "app",
   "category": "Jeux",
   "compatibility": [
@@ -21,6 +21,7 @@
   "dependencies": {},
   "sdk": "2.1.0",
   "permissions": [
-    "storage"
+    "storage",
+    "rooms"
   ]
 }

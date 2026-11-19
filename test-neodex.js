@@ -1,6 +1,6 @@
 // lancé par le test « local » de NeoDex : contre l'ordinateur, fait entrer un éléphant en A1 regard vers le bas, attend la réponse de l'ordinateur,
 // vérifie le tour et l'absence d'erreur, la force affichée avant de pousser, le cri de l'animal qui pousse, le plein écran et la place prise à la taille de la fenêtre (avec NEO_SHOTS : garde des images)
-module.exports = async ({ pj, sleep }) => {
+module.exports = async ({ pj, js, sleep }) => {
   const label = () => pj(`document.getElementById('buCanvas').getAttribute('aria-label') || ''`);
   const click = (x, y) => pj(`(() => { const c = document.getElementById('buCanvas'), r = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: r.left + ${x} / 320 * r.width, clientY: r.top + ${y} / 240 * r.height})); return 0; })()`);
   const shot = async n => { if (!process.env.NEO_SHOTS) return; const d = await pj(`document.getElementById('buCanvas').toDataURL()`); require('fs').writeFileSync(require('path').join(process.env.NEO_SHOTS, 'bousculade-' + n + '.png'), Buffer.from(d.split(',')[1], 'base64')); };
@@ -28,6 +28,28 @@ module.exports = async ({ pj, sleep }) => {
     const d = await pj(`(() => { const S = document.getElementById('buCanvas').__bu.spr, c = document.createElement('canvas'); c.width = 4 * 28 * 6; c.height = 28 * 6; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.fillStyle = '#c49c6a'; g.fillRect(0, 0, c.width, c.height); ['E', 'E2', 'R', 'R2'].forEach((k, i) => g.drawImage(S[k], i * 168, 0, 168, 168)); return c.toDataURL(); })()`);
     require('fs').writeFileSync(require('path').join(process.env.NEO_SHOTS, 'bousculade-5-animaux.png'), Buffer.from(d.split(',')[1], 'base64'));
   }
+  // à distance : un faux serveur de parties dans la page de NeoDex (WebSocket remplacé) ; l'hôte, le plugin et ctx.room sont les vrais
+  await js(`(() => { window.__RealWS ??= WebSocket; window.WebSocket = class { constructor(u) { this.url = u; this.sent = []; this.readyState = 1; window.__fakeWs = this;
+    setTimeout(() => this.onmessage?.({data: JSON.stringify({t: 'bienvenue', id: 'moi', host: true, joueurs: []})}), 50); }
+    send(d) { this.sent.push(d); } close() { this.readyState = 3; } }; return 0; })()`);
+  await pj(`document.getElementById('buHost').click(), 0`); await sleep(500);
+  if (!/Code de la partie : [A-Z0-9]{6}/.test(await pj(`document.getElementById('buNetInfo').textContent`))) throw new Error('création de partie');
+  await js(`__fakeWs.onmessage({data: JSON.stringify({t: 'arrive', id: 'ami', name: 'invité'})}), 0`); await sleep(300);
+  const sent = () => js(`__fakeWs.sent.map(s => JSON.parse(s).data)`);
+  if (!(await sent()).some(m => m?.t === 'start' && m.side === 'R')) throw new Error('annonce du début : ' + JSON.stringify(await sent()));
+  if (!/tour des Éléphants, coup 0/.test(await label())) throw new Error('partie à distance pas lancée : ' + await label());
+  await click(32, 120); await sleep(150); await click(96, 60); await sleep(200); await click(96, 81); await sleep(300);  // mon éléphant entre en A1, regard vers le bas
+  const mv = (await sent()).filter(m => m?.t === 'coup');
+  if (mv.length !== 1 || mv[0].n !== 0 || mv[0].m.k !== 'enter') throw new Error('mon coup envoyé : ' + JSON.stringify(mv));
+  await js(`__fakeWs.onmessage({data: JSON.stringify({t: 'msg', from: 'ami', data: {t: 'coup', n: 1, m: {k: 'enter', to: 99, d: 2}}})}), 0`); await sleep(200);  // coup impossible : ignoré
+  await js(`__fakeWs.onmessage({data: JSON.stringify({t: 'msg', from: 'ami', data: {t: 'coup', n: 1, m: {k: 'enter', to: 4, d: 2}}})}), 0`); await sleep(300);
+  const st = await B('return JSON.stringify([bu.s.n, bu.s.turn, bu.s.b[4]?.t]);');
+  if (st !== JSON.stringify([2, 'E', 'R'])) throw new Error("coup de l'ami : " + st);
+  await js(`__fakeWs.onmessage({data: JSON.stringify({t: 'part', id: 'ami'})}), 0`); await sleep(200);
+  if (!/a quitté/.test(await pj(`document.getElementById('buNetInfo').textContent`))) throw new Error("départ de l'ami");
+  await click(105, 90); await sleep(150);  // le menu revient : « L'ordinateur » quitte la partie à distance
+  if (await B('return bu.vs;') !== 'ia') throw new Error('retour contre l’ordinateur');
+  await js(`window.WebSocket = window.__RealWS, 0`);
   await sleep(1500);
   // plein écran, et la zone de jeu qui tient dans la fenêtre
   await pj(`document.getElementById('buFs').click(), 0`); await sleep(700);

@@ -6,6 +6,7 @@ const HTML = `<div class="appWrap wide">
     <div class="gSide">
       <div class="sysCard"><b>RECORDS</b><div class="gStats" id="buStats"></div></div>
       <div class="row"><button class="btn main" id="buNew">NOUVELLE PARTIE</button><button class="btn" id="buFs">PLEIN ÉCRAN</button></div>
+      <div class="sysCard"><b>À DISTANCE</b><div class="row"><button class="btn" id="buHost">CRÉER UNE PARTIE</button></div><div class="row"><input class="f" id="buCode" placeholder="CODE" maxlength="8" autocomplete="off" spellcheck="false" style="max-width:110px;text-transform:uppercase"><button class="btn" id="buJoin">REJOINDRE</button></div><div class="hint" id="buNetInfo">Contre un ami sur un autre PC : crée une partie et donne-lui son code, ou tape le sien.</div></div>
       <div class="hint">Éléphants contre rhinocéros, trois rochers au milieu. À ton tour, une seule action : faire entrer un animal de ta réserve sur une case du bord, en déplacer un d'une case, le tourner sur place, le faire sortir par un bord, ou pousser droit devant. Après un déplacement ou une entrée, choisis où il regarde. Pour pousser, la force doit suffire : chaque animal qui regarde dans le sens de la poussée compte +1, chaque animal qui regarde en face −1, et chaque rocher demande 1 de force. Quand un rocher sort, c'est l'animal le plus proche derrière lui, qui regarde dans le sens de la poussée, qui fait gagner son camp, même si c'est l'adversaire !</div>
     </div></div>
 </div>`;
@@ -331,6 +332,10 @@ const BU_TEAM = {E: 'Éléphants', R: 'Rhinocéros'}, BU_LV = ['Facile', 'Normal
 const cnv = (w, h, fn) => { const c = el('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; fn(g); return c; };  // une image dessinée une fois
 const renew = (old, o) => { if (!old) return o; for (const k of Object.keys(old)) if (k !== 'raf') delete old[k]; return Object.assign(old, o); };
 const bus = gstore('bousculade', {wins: [0, 0, 0], losses: [0, 0, 0], duels: 0, level: 1, side: 'E'});
+bus.net ??= {v: 0, d: 0};
+// à distance (bu.vs 'net') : deux PC, une partie par un code (ctx.room, serveur NeoDex). L'hôte choisit les camps (chacun son tour d'une partie
+// à l'autre) et lance la partie ; chaque coup part à l'autre ({t:'coup', m, n}) et n'est joué que si c'est son tour et qu'il est permis
+const net = {code: '', side: '', opp: false, oppId: '', host: false, next: 'E'};
 let bu = null, buac = null, buMute = false;
 function buBeep(f, d, type = 'square', slide = 0, vol = .03) { if (buMute) return; try { buac ??= new AudioContext(); const o = buac.createOscillator(), g = buac.createGain(), t = buac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(g).connect(buac.destination); o.start(t); o.stop(t + d); } catch {} }
 function buNoise(d, f, vol = .05, at = 0) {  // un souffle : du bruit filtré autour de f
@@ -577,16 +582,18 @@ function buAnim(s, m) {
 function buNew(vs = bus.vs ?? 'ia') {
   bu = renew(bu, {g: bu?.g, mode: 'menu', vs, s: buStart(), sel: null, pend: null, hits: [], focus: -1, tick: 0, think: 0, msg: '', flash: null});
 }
-function buHumanTurn() { return bu.mode === 'play' && !bu.s.win && (bu.vs === 'duo' || bu.s.turn === bus.side); }
-function buPlay(m) {
+function buHumanTurn() { return bu.mode === 'play' && !bu.s.win && (bu.vs === 'duo' || (bu.vs === 'net' ? net.opp && bu.s.turn === net.side : bu.s.turn === bus.side)); }
+function buPlay(m, fromNet) {
+  if (bu.vs === 'net' && !fromNet) ctx.room.send({t: 'coup', m, n: bu.s.n}).catch(e => toast(e.message, true));
   const shove = m.k === 'push' || m.k === 'pushin', by = shove ? {at: m.k === 'push' ? buStep(m.from, m.d) : m.to, t: m.k === 'push' ? bu.s.b[m.from].t : bu.s.turn} : null;
   bu.anim = {t: bu.tick, list: buAnim(bu.s, m)}; bu.s = buApply(bu.s, m); bu.sel = bu.pend = null; bu.flash = {m, t: bu.tick, fell: bu.s.fell, by};
   if (by) buCry(by.t);
   buBeep(m.k === 'push' || m.k === 'pushin' ? 140 : m.k === 'exit' ? 330 : 520, m.k === 'push' || m.k === 'pushin' ? .16 : .06, m.k === 'push' || m.k === 'pushin' ? 'sawtooth' : 'square', m.k === 'push' || m.k === 'pushin' ? 90 : 0);
   if (bu.s.win) {
     bu.mode = 'over'; bu.overAt = bu.tick;
-    if (bu.vs === 'duo') bus.duels++; else if (bu.s.win === bus.side) bus.wins[bus.level]++; else bus.losses[bus.level]++;
-    saveGames(); buInfo(); buBeep(bu.vs === 'duo' || bu.s.win === bus.side ? 660 : 200, .4, 'triangle', bu.vs === 'duo' || bu.s.win === bus.side ? 990 : 120);
+    const mine = bu.vs === 'net' ? net.side : bus.side;
+    if (bu.vs === 'duo') bus.duels++; else if (bu.vs === 'net') bus.net[bu.s.win === mine ? 'v' : 'd']++; else if (bu.s.win === bus.side) bus.wins[bus.level]++; else bus.losses[bus.level]++;
+    saveGames(); buInfo(); buBeep(bu.vs === 'duo' || bu.s.win === mine ? 660 : 200, .4, 'triangle', bu.vs === 'duo' || bu.s.win === mine ? 990 : 120);
   } else if (bu.vs === 'ia' && bu.s.turn !== bus.side) bu.think = bu.tick + 25;
 }
 // les cibles possibles pour la pièce choisie : {x, y, kind, m} (m : le coup joué tout de suite) ou {pend} (il reste à choisir le regard)
@@ -692,8 +699,14 @@ function buMenu(g, hit) {
   pxFont(g, 'Pousse un rocher hors du plateau !', BU.W / 2, 58, '#f0e0c0', 6, 'center');
   const btn = (x, y, w, label, on, act, desc) => { px(g, '#14100c', x, y, w, 17); px(g, on ? '#e8b84a' : '#4a3e2a', x + 1, y + 1, w - 2, 15); pxFont(g, label, x + w / 2, y + 12, on ? '#14100c' : '#e8d8b8', 7, 'center'); hit(x, y, w, 17, act, desc || label); };
   pxFont(g, 'ADVERSAIRE', BU.W / 2, 76, '#a89878', 6, 'center');
-  btn(56, 82, 100, "L'ordinateur", bu.vs === 'ia', () => { bu.vs = bus.vs = 'ia'; saveGames(); });
-  btn(164, 82, 100, 'À deux', bu.vs === 'duo', () => { bu.vs = bus.vs = 'duo'; saveGames(); }, 'à deux sur ce PC');
+  btn(56, 82, 100, "L'ordinateur", bu.vs === 'ia', () => { netLeave(); bu.vs = bus.vs = 'ia'; saveGames(); });
+  btn(164, 82, 100, 'À deux', bu.vs === 'duo', () => { netLeave(); bu.vs = bus.vs = 'duo'; saveGames(); }, 'à deux sur ce PC');
+  if (bu.vs === 'net') {
+    pxFont(g, !net.opp ? 'En attente de ton ami…' : net.host ? 'Contre ton ami, à distance' : 'L’hôte lance la partie', BU.W / 2, 132, '#e8d8b8', 6, 'center');
+    pxFont(g, 'Code : ' + net.code, BU.W / 2, 150, '#ffd84a', 7, 'center');
+    if (net.opp) btn(110, 184, 100, net.host ? 'JOUER' : 'REDEMANDER', true, () => net.host ? netStart() : ctx.room.send({t: 'rejouer'}).catch(() => {}), 'jouer');
+    return;
+  }
   if (bu.vs === 'ia') {
     pxFont(g, 'NIVEAU', BU.W / 2, 114, '#a89878', 6, 'center');
     BU_LV.forEach((l, k) => btn(56 + k * 72, 120, 64, l, bus.level === k, () => { bus.level = k; saveGames(); }, 'niveau ' + l.toLowerCase()));
@@ -708,7 +721,7 @@ function buUpdate() {
 }
 function buInfo() {
   const w = bus.wins, l = bus.losses;
-  $('buStats').replaceChildren(...[['Victoires (facile)', w[0] + ' / ' + (w[0] + l[0])], ['Victoires (normal)', w[1] + ' / ' + (w[1] + l[1])], ['Victoires (difficile)', w[2] + ' / ' + (w[2] + l[2])], ['Parties à deux', bus.duels]].flatMap(([a, c]) => [el('span', '', a), el('b', '', String(c))]));
+  $('buStats').replaceChildren(...[['Victoires (facile)', w[0] + ' / ' + (w[0] + l[0])], ['Victoires (normal)', w[1] + ' / ' + (w[1] + l[1])], ['Victoires (difficile)', w[2] + ' / ' + (w[2] + l[2])], ['Parties à deux', bus.duels], ['Victoires à distance', bus.net.v + ' / ' + (bus.net.v + bus.net.d)]].flatMap(([a, c]) => [el('span', '', a), el('b', '', String(c))]));
 }
 // le clavier : flèches = passer d'une zone à la plus proche dans ce sens, Entrée ou Espace = choisir, Échap = annuler
 document.addEventListener('keydown', e => {
@@ -732,6 +745,45 @@ document.addEventListener('keydown', e => {
   cv.onpointerleave = () => { if (bu) bu.ptr = null; };
   cv.oncontextmenu = e => { e.preventDefault(); if (bu) { bu.sel = null; bu.pend = null; } }; }
 $('buNew').onclick = () => { bu.mode = 'menu'; bu.sel = bu.pend = null; $('buNew').blur(); };
+const netSay = t => { $('buNetInfo').textContent = t; };
+function netLeave() { if (net.code) ctx.room.leave().catch(() => {}); Object.assign(net, {code: '', side: '', opp: false, oppId: '', host: false, next: 'E'}); if (bu?.vs === 'net') bu.vs = bus.vs === 'net' ? 'ia' : (bus.vs || 'ia'); }
+// l'hôte lance une partie : les camps changent à chaque partie (les éléphants commencent toujours)
+function netStart(side) {
+  if (net.host) { side = net.next; net.next = side === 'E' ? 'R' : 'E'; ctx.room.send({t: 'start', side: side === 'E' ? 'R' : 'E'}).catch(() => {}); }
+  net.side = side; bu.vs = 'net'; bu.s = buStart(); bu.mode = 'play'; bu.sel = bu.pend = null; bu.flash = null; bu.think = 0; buInfo();
+  netSay('Partie en cours · tu as les ' + (side === 'E' ? 'éléphants' : 'rhinocéros') + ' · code ' + net.code);
+}
+ctx.room?.on(ev => {
+  if (!net.code) return;
+  if (ev.t === 'arrive' && net.host) {
+    if (net.opp) return void ctx.room.send({t: 'pleine'}, ev.id).catch(() => {});
+    net.opp = true; net.oppId = ev.id; netStart();
+  } else if (ev.t === 'part' && ev.id === net.oppId || ev.t === 'fin') {
+    netSay(ev.t === 'fin' ? 'Connexion perdue avec le serveur de parties.' : 'Ton ami a quitté la partie.' + (net.host ? ' Le code reste valable : il peut revenir.' : ''));
+    net.opp = false; net.oppId = ''; if (ev.t === 'fin') net.code = ''; if (bu && bu.vs === 'net') { bu.mode = 'menu'; bu.sel = bu.pend = null; }
+  } else if (ev.t === 'msg' && ev.from === net.oppId) {
+    const m = ev.data || {};
+    if (m.t === 'start' && !net.host) netStart(m.side === 'R' ? 'R' : 'E');
+    else if (m.t === 'rejouer' && net.host && bu.mode !== 'play') netStart();
+    else if (m.t === 'pleine') { netSay('Cette partie a déjà deux joueurs.'); netLeave(); }
+    else if (m.t === 'coup' && bu.vs === 'net' && (bu.mode === 'play' || bu.mode === 'pause') && m.n === bu.s.n && bu.s.turn !== net.side && m.m) {
+      const ok = buMoves(bu.s).find(x => ['k', 'from', 'to', 'd'].every(f => x[f] === m.m[f]));  // seulement un coup permis par les règles
+      if (ok) buPlay(ok, true);
+    }
+  }
+});
+$('buHost').onclick = async () => {
+  try { netLeave(); const r = await ctx.room.create('hôte'); Object.assign(net, {code: r.code, host: true}); bu.vs = 'net'; bu.mode = 'menu'; netSay('Code de la partie : ' + r.code + ' · donne-le à ton ami. En attente…'); }
+  catch (e) { netSay('Impossible de créer la partie : ' + e.message); }
+};
+$('buJoin').onclick = async () => {
+  try {
+    netLeave(); const r = await ctx.room.join($('buCode').value, 'invité'), host = r.joueurs.find(j => j.host);
+    if (!host || r.joueurs.length > 1) { await ctx.room.leave(); return netSay(host ? 'Cette partie a déjà deux joueurs.' : 'Aucune partie avec ce code.'); }
+    Object.assign(net, {code: r.code, host: false, opp: true, oppId: host.id}); bu.vs = 'net'; bu.mode = 'menu'; netSay('Connecté · la partie commence…');
+  } catch (e) { netSay('Impossible de rejoindre : ' + e.message); }
+};
+$('buCode').onkeydown = e => { if (e.key === 'Enter') $('buJoin').click(); };
 $('buFs').onclick = () => { $('buCanvas').parentElement.requestFullscreen?.().catch(() => {}); $('buFs').blur(); };
 setTimeout(() => {  // vérification, 2 s après le chargement : les règles de poussée et de victoire, et l'ordinateur qui voit un coup gagnant
   const bad = [], st = () => ({b: Array(25).fill(null), res: {E: 5, R: 5}, turn: 'E', win: null, n: 0});

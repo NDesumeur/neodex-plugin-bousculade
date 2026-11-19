@@ -39,6 +39,10 @@ Quand un rocher sort du plateau, c'est l'animal **le plus proche derrière lui**
 - **Clavier** : les flèches passent d'une zone à l'autre, **Entrée** ou **Espace** choisit, **Échap** annule.
 - **Plein écran** : le bouton à droite du plateau (Échap pour revenir). Le plateau prend toute la place de la fenêtre, petite ou grande.
 
+## À distance
+
+Joue contre un ami sur un autre PC : l'un clique sur **Créer une partie** (à droite du plateau) et donne le code de 6 lettres affiché, l'autre le tape et clique sur **Rejoindre**. La partie commence dès que les deux sont là ; on change de camp à chaque partie (les éléphants commencent toujours). Seuls les coups passent par le serveur de NeoDex (autorisation « Parties à distance »), et chaque coup reçu est vérifié avec les règles avant d'être joué.
+
 ## L'ordinateur
 
 - **Facile** : il voit un coup à l'avance et se trompe parfois.

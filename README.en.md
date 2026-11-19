@@ -39,6 +39,10 @@ When a rock goes off the board, the **nearest animal behind it** facing the push
 - **Keyboard**: arrows move between zones, **Enter** or **Space** picks, **Esc** cancels.
 - **Full screen**: the button beside the board (Esc to come back). The board takes all the room of the window, small or large.
 
+## Online
+
+Play against a friend on another PC: one clicks **Create a game** (right of the board) and gives the 6-letter code shown, the other types it and clicks **Join**. The game starts as soon as both are there; you swap sides every game (elephants always start). Only the moves go through the NeoDex server ("Remote games" permission), and every move received is checked against the rules before it is played.
+
 ## The computer
 
 - **Easy**: looks one move ahead and sometimes slips.
