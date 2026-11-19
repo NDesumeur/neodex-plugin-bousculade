@@ -82,7 +82,6 @@
  "Pousse un rocher hors du plateau !": "Push a rock off the board!",
  "RECORDS": "BESTS",
  "RHINOS": "RHINOS",
- "Record.": "Best.",
  "Rhinocéros": "Rhinos",
  "TU JOUES LES": "YOU PLAY THE",
  "Ua": "Ua",
@@ -165,5 +164,6 @@
  "· donne-le à ton ami. En attente…": "· give it to your friend. Waiting…",
  "Impossible de créer la partie :": "Could not create the game:",
  "invité": "guest",
- "Impossible de rejoindre :": "Could not join:"
+ "Impossible de rejoindre :": "Could not join:",
+ "Rien n'est synchronisé : tes records restent sur cet appareil.": "Nothing is synced: your records stay on this device."
 }
