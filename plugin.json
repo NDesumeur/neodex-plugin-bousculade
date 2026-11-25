@@ -1,7 +1,7 @@
 {
   "id": "neodex.bousculade",
   "name": "Bousculade",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "author": "NDesumeur",
   "description": "Jeu de plateau en pixel art : éléphants contre rhinocéros sur un plateau de 5 × 5, à qui poussera le premier un rocher hors du plateau. Entrer, se déplacer, se tourner, sortir ou pousser : la force de chaque poussée dépend du regard des animaux alignés. Contre l'ordinateur (facile, normal, difficile) à deux sur le même PC, ou à distance avec un ami grâce à un code de partie. Avant de pousser, la force s'affiche sur chaque animal de la file ; l'éléphant barrit et le rhinocéros souffle quand ils poussent ; plein écran, et le plateau s'adapte à la taille de la fenêtre.",
   "icon": "icon.png",
@@ -23,5 +23,51 @@
   "permissions": [
     "storage",
     "rooms"
+  ],
+  "succes": [
+    {
+      "id": "facile",
+      "nom": "Premier rocher",
+      "texte": "Battre l'ordinateur en Facile"
+    },
+    {
+      "id": "normal",
+      "nom": "Poids lourd",
+      "texte": "Battre l'ordinateur en Normal"
+    },
+    {
+      "id": "difficile",
+      "nom": "Roi de la savane",
+      "texte": "Battre l'ordinateur en Difficile"
+    },
+    {
+      "id": "dix",
+      "nom": "Grand troupeau",
+      "texte": "Gagner 10 parties contre l'ordinateur"
+    },
+    {
+      "id": "difficile10",
+      "nom": "Indéboulonnable",
+      "texte": "Battre 10 fois l'ordinateur en Difficile",
+      "cache": true
+    },
+    {
+      "id": "duo",
+      "nom": "Face à face",
+      "texte": "Jouer une partie à deux sur le même écran"
+    },
+    {
+      "id": "net",
+      "nom": "Entre amis",
+      "texte": "Gagner une partie en ligne"
+    }
+  ],
+  "records": [
+    {
+      "id": "victoires",
+      "nom": "Victoires contre l'ordinateur",
+      "sens": "haut",
+      "format": "nombre"
+    }
   ]
 }

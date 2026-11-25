@@ -165,5 +165,20 @@
  "Impossible de créer la partie :": "Could not create the game:",
  "invité": "guest",
  "Impossible de rejoindre :": "Could not join:",
- "Rien n'est synchronisé : tes records restent sur cet appareil.": "Nothing is synced: your records stay on this device."
+ "Rien n'est synchronisé : tes records restent sur cet appareil.": "Nothing is synced: your records stay on this device.",
+ "Premier rocher": "First boulder",
+ "Battre l'ordinateur en Facile": "Beat the computer on Easy",
+ "Poids lourd": "Heavyweight",
+ "Battre l'ordinateur en Normal": "Beat the computer on Normal",
+ "Roi de la savane": "King of the savanna",
+ "Battre l'ordinateur en Difficile": "Beat the computer on Hard",
+ "Grand troupeau": "Big herd",
+ "Gagner 10 parties contre l'ordinateur": "Win 10 games against the computer",
+ "Indéboulonnable": "Immovable",
+ "Battre 10 fois l'ordinateur en Difficile": "Beat the computer 10 times on Hard",
+ "Face à face": "Face to face",
+ "Jouer une partie à deux sur le même écran": "Play a two-player game on the same screen",
+ "Entre amis": "Among friends",
+ "Gagner une partie en ligne": "Win an online game",
+ "Victoires contre l'ordinateur": "Wins against the computer"
 }

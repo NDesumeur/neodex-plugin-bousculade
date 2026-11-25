@@ -300,6 +300,9 @@ export default async function (ctx) {
   const best = (k, v) => { const b = games.best[k]; if (v > (b ?? 0)) {  // un score nul n'est jamais un record
     games.best[k] = v; saveGames(); return true; } return false; };
   const gstore = (k, init) => (games[k] ??= init);
+  // les trophées de NeoDex (3.4.8 et plus) : succès et records déclarés dans plugin.json ; sur un NeoDex plus ancien, rien ne se passe
+  const trophy = id => { ctx.games?.unlock(id).catch(() => {}); };
+  const trophyRecord = (id, v) => { if (v != null && Number.isFinite(+v)) ctx.games?.record(id, +v).catch(() => {}); };
 function gameLoop(st, appKey, update, draw) {
   cancelAnimationFrame(st.raf);
   const STEP = 1000 / 60; let acc = 0, last = performance.now();
@@ -720,6 +723,7 @@ function buUpdate() {
   if (bu.think && bu.tick >= bu.think && bu.mode === 'play' && !bu.s.win) { bu.think = 0; buPlay(buThink(bu.s, bus.level)); }
 }
 function buInfo() {
+  setTimeout(buTrophies);
   const w = bus.wins, l = bus.losses;
   $('buStats').replaceChildren(...[['Victoires (facile)', w[0] + ' / ' + (w[0] + l[0])], ['Victoires (normal)', w[1] + ' / ' + (w[1] + l[1])], ['Victoires (difficile)', w[2] + ' / ' + (w[2] + l[2])], ['Parties à deux', bus.duels], ['Victoires à distance', bus.net.v + ' / ' + (bus.net.v + bus.net.d)]].flatMap(([a, c]) => [el('span', '', a), el('b', '', String(c))]));
 }
@@ -797,6 +801,13 @@ setTimeout(() => {  // vérification, 2 s après le chargement : les règles de 
   console.assert(!bad.length, 'bousculade', bad);
 }, 2000);
 $('buCanvas').__bu = {st: () => bu, start: buStart, spr: BU_SPR};  // pour l'auto-test
+// les trophées, tirés des statistiques et des records gardés (aussi à l'ouverture : ce qui a été fait avant compte)
+function buTrophies() {
+  const w = bus.wins, n = w[0] + w[1] + w[2], sig = [n, w[2], bus.duels, bus.net.v].join(); if (sig === buTrophies.sig) return; buTrophies.sig = sig;
+  trophyRecord('victoires', n || null);
+  if (w[0]) trophy('facile'); if (w[1]) trophy('normal'); if (w[2]) trophy('difficile'); if (n >= 10) trophy('dix'); if (w[2] >= 10) trophy('difficile10');
+  if (bus.duels) trophy('duo'); if (bus.net.v) trophy('net');
+}
 ctx.onOpen(() => {
   if (!bu || !bu.g) { buNew(); bu.g = $('buCanvas').getContext('2d'); }
   if (bu.mode === 'pause') bu.mode = 'play';  // quitter l'onglet met la boucle en pause
